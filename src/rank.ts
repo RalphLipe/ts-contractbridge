@@ -26,7 +26,7 @@ export namespace Rank {
   export const bridgeRank = (r: Rank): number => 12 - all.indexOf(r)
 
   /** High card points (Ace=4, King=3, Queen=2, Jack=1, else 0) */
-  export const hcp = (r: Rank): number => ({ A: 4, K: 3, Q: 2, J: 1 }[r] ?? 0)
+  export const hcp = (r: Rank): number => ({ A: 4, K: 3, Q: 2, J: 1 } as Partial<Record<Rank, number>>)[r] ?? 0
 
   export const name = (r: Rank): string => ({
     A: 'Ace', K: 'King', Q: 'Queen', J: 'Jack', T: 'Ten',

@@ -11,7 +11,7 @@ export namespace Deck {
     const d = [...deck]
     for (let i = d.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [d[i], d[j]] = [d[j], d[i]]
+      [d[i], d[j]] = [d[j]!, d[i]!]
     }
     return d
   }

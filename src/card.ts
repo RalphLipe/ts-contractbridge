@@ -72,7 +72,7 @@ export namespace Card {
   )
 
   export const isCard = (x: string): x is Card =>
-    x.length === 2 && Suit.isSuit(x[0]) && Rank.isRank(x[1])
+    x.length === 2 && Suit.isSuit(x[0]!) && Rank.isRank(x[1]!)
 
   export const suit = (c: Card): Suit => c[0] as Suit
   export const rank = (c: Card): Rank => c[1] as Rank
