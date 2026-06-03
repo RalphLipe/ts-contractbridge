@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    // Output
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,          // emit .d.ts files for consumers
+    "declarationMap": true,       // source maps for .d.ts (IDE go-to-definition)
+    "sourceMap": true,
+
+    // Target: Node 18+ / modern bundlers
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+
+    // Library hygiene
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Interop
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}
