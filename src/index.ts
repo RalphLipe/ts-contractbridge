@@ -1,5 +1,8 @@
-// Public API of ts-contractbridge
-// Add new exports here as modules are ported from swift-contractbridge
-
-export { Suit, Rank, Card, Deck } from './bridge.js'
-export type { } from './bridge.js'
+export { Suit } from './suit.js'
+export type { } from './suit.js'
+export { Rank } from './rank.js'
+export type { } from './rank.js'
+export { Card } from './card.js'
+export type { } from './card.js'
+export { Deck } from './deck.js'
+export type { } from './deck.js'

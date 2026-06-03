@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { Suit, Rank, Card, Deck } from '../src/bridge.js'
+import { Suit } from '../src/suit.js'
+import { Rank } from '../src/rank.js'
+import { Card } from '../src/card.js'
+import { Deck } from '../src/deck.js'
 
 // ─── Suit ─────────────────────────────────────────────────────────────────────
 
