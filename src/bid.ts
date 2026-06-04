@@ -33,4 +33,8 @@ export namespace Bid {
 
   export const name = (b: Bid): string =>
     `${level(b)} ${Strain.name(strain(b))}`
+
+  /** Parse a PBN bid string (e.g. "3NT", "1C"). Returns undefined if invalid. */
+  export const fromPBN = (s: string): Bid | undefined =>
+    isBid(s) ? s : undefined
 }
