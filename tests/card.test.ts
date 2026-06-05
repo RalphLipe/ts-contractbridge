@@ -45,6 +45,19 @@ describe('Card', () => {
     expect(Card.compareRank('HQ', 'HQ')).toBe(0)            // equal
   })
 
+  it('pbn is identity', () => {
+    expect(Card.pbn('SA')).toBe('SA')
+    expect(Card.pbn('CT')).toBe('CT')
+  })
+
+  it('fromPBN accepts uppercase and lowercase', () => {
+    expect(Card.fromPBN('SA')).toBe('SA')
+    expect(Card.fromPBN('sa')).toBe('SA')
+    expect(Card.fromPBN('ct')).toBe('CT')
+    expect(Card.fromPBN('XA')).toBeUndefined()
+    expect(Card.fromPBN('')).toBeUndefined()
+  })
+
   it('exposes named constants matching PBN values', () => {
     expect(Card.aceOfSpades).toBe('SA')
     expect(Card.tenOfClubs).toBe('CT')
