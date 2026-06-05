@@ -8,7 +8,7 @@ metadata:
 Swift source: /Users/ralphlipe/Documents/GitHub/swift-contract-bridge/Sources/ContractBridge/
 TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 
-## Already ported (11 types)
+## Already ported (14 types)
 - Suit → suit.ts (single-char type alias + namespace)
 - Rank → rank.ts (single-char type alias + namespace)
 - Card → card.ts (string type alias + namespace)
@@ -19,7 +19,9 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 - Call → call.ts (union type: Bid | 'Pass' | 'X' | 'XX')
 - Risk + Contract → contract.ts (Risk = '' | 'X' | 'XX'; Contract = { bid, risk } only — no declarer)
 - DeclaredContract → declaredContract.ts ({ contract, declarer }; pbn = contract pbn + direction, e.g. "3NTW")
-- DealOutcome → dealOutcome.ts (discriminated union on `kind`; nsScore/ewScore/rotated omitted — depend on scoring/rotatable)
+- DealOutcome → dealOutcome.ts (discriminated union on `kind`; nsScore/ewScore omitted — depend on scoring)
+- Auction + AuctionCall + AuctionError → auction.ts (immutable; makingCall/undoingLast return new instances; no PBN parsing)
+- RotateFn → rotatable.ts (type alias `(value: T, seats: number) => T`; Direction/DeclaredContract/DealOutcome/Auction all support rotated)
 
 ## Coding pattern used
 Swift enums/structs → TypeScript string type alias + namespace object with functions.
@@ -27,7 +29,7 @@ Example: `export type Suit = 'C'|'D'|'H'|'S'` + `export namespace Suit { ... }`
 Format-specific parsers named `fromPBN`, `fromLIN`, etc. (not generic `parse`).
 
 ## Remaining types (priority order — core domain first)
-1. Auction — struct tracking calls, dealer, declared contract
+1. Deal + Hands — 4-hand card distribution with PBN serialization
 5. Deal + Hands — 4-hand card distribution with PBN serialization
 6. DealOutcome — played/passedOut/average/etc with ns/ew scores
 7. DoubleDummyTricks — 2D Direction×Strain→tricks with hex encoding
