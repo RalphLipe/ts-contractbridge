@@ -38,6 +38,13 @@ describe('DeclaredContract', () => {
     }
   })
 
+  it('rotated shifts declarer, contract unchanged', () => {
+    const dc = DeclaredContract.make(Contract.make('3NT'), 'N')
+    expect(DeclaredContract.rotated(dc, 1)).toEqual(DeclaredContract.make(Contract.make('3NT'), 'E'))
+    expect(DeclaredContract.rotated(dc, 2)).toEqual(DeclaredContract.make(Contract.make('3NT'), 'S'))
+    expect(DeclaredContract.rotated(dc, 4)).toEqual(dc)
+  })
+
   it('compare orders by contract then declarer', () => {
     const a = DeclaredContract.make(Contract.make('3NT'), 'N')
     const b = DeclaredContract.make(Contract.make('4C'), 'N')

@@ -51,6 +51,19 @@ export namespace DealOutcome {
     'NS':   noScore,
   }
 
+  export const rotated = (o: DealOutcome, seats: number): DealOutcome => {
+    const samePair = seats % 2 === 0
+    switch (o.kind) {
+      case 'played':       return played(DeclaredContract.rotated(o.declaredContract, seats), o.tricksTaken)
+      case 'scoreOnly':    return samePair ? o : scoreOnly(-o.nsScore)
+      case 'averagePlus':  return samePair ? o : averageMinus
+      case 'averageMinus': return samePair ? o : averagePlus
+      case 'passedOut':
+      case 'average':
+      case 'noScore':      return o
+    }
+  }
+
   /** Parse a PBN-style deal outcome string. Returns undefined if invalid. */
   export const fromPBN = (s: string): DealOutcome | undefined => {
     const keyword = keywords[s.toUpperCase()]

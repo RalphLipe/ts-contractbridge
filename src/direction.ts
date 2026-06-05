@@ -50,6 +50,10 @@ export namespace Direction {
   export const partner = (d: Direction): Direction =>
     all[(index(d) + 2) % 4]!
 
+  /** Rotate clockwise by seats (e.g. seats=1: N→E, seats=2: N→S) */
+  export const rotated = (d: Direction, seats: number): Direction =>
+    all[((index(d) + seats) % 4 + 4) % 4]!
+
   export const pairDirection = (d: Direction): PairDirection =>
     d === 'N' || d === 'S' ? 'NS' : 'EW'
 }

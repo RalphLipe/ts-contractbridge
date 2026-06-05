@@ -49,6 +49,15 @@ describe('Direction', () => {
     expect(Direction.partner('W')).toBe('E')
   })
 
+  it('rotates clockwise by seats', () => {
+    expect(Direction.rotated('N', 0)).toBe('N')
+    expect(Direction.rotated('N', 1)).toBe('E')
+    expect(Direction.rotated('N', 2)).toBe('S')
+    expect(Direction.rotated('N', 3)).toBe('W')
+    expect(Direction.rotated('N', 4)).toBe('N')
+    expect(Direction.rotated('W', 1)).toBe('N')
+  })
+
   it('returns pair direction', () => {
     expect(Direction.pairDirection('N')).toBe('NS')
     expect(Direction.pairDirection('S')).toBe('NS')

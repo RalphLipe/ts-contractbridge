@@ -91,6 +91,36 @@ describe('DealOutcome', () => {
     expect(DealOutcome.fromPBN('3NTZ=')).toBeUndefined()      // bad direction
   })
 
+  it('rotated: played rotates the declaredContract', () => {
+    const o = DealOutcome.played(DeclaredContract.make(Contract.make('3NT'), 'N'), 9)
+    const r = DealOutcome.rotated(o, 1)
+    expect(r.kind).toBe('played')
+    if (r.kind === 'played') {
+      expect(r.declaredContract.declarer).toBe('E')
+      expect(r.tricksTaken).toBe(9)
+    }
+  })
+
+  it('rotated: scoreOnly negates on odd seats, unchanged on even', () => {
+    const o = DealOutcome.scoreOnly(420)
+    expect(DealOutcome.rotated(o, 1)).toEqual(DealOutcome.scoreOnly(-420))
+    expect(DealOutcome.rotated(o, 3)).toEqual(DealOutcome.scoreOnly(-420))
+    expect(DealOutcome.rotated(o, 2)).toEqual(o)
+    expect(DealOutcome.rotated(o, 4)).toEqual(o)
+  })
+
+  it('rotated: averagePlus/averageMinus swap on odd seats', () => {
+    expect(DealOutcome.rotated(DealOutcome.averagePlus, 1)).toEqual(DealOutcome.averageMinus)
+    expect(DealOutcome.rotated(DealOutcome.averageMinus, 1)).toEqual(DealOutcome.averagePlus)
+    expect(DealOutcome.rotated(DealOutcome.averagePlus, 2)).toEqual(DealOutcome.averagePlus)
+  })
+
+  it('rotated: passedOut, average, noScore are unchanged', () => {
+    expect(DealOutcome.rotated(DealOutcome.passedOut, 1)).toEqual(DealOutcome.passedOut)
+    expect(DealOutcome.rotated(DealOutcome.average, 1)).toEqual(DealOutcome.average)
+    expect(DealOutcome.rotated(DealOutcome.noScore, 3)).toEqual(DealOutcome.noScore)
+  })
+
   it('pbn round-trips', () => {
     const outcomes = [
       DealOutcome.played(dc, 9),

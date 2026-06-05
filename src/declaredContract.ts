@@ -23,6 +23,9 @@ export namespace DeclaredContract {
     return contract === undefined ? undefined : { contract, declarer }
   }
 
+  export const rotated = (dc: DeclaredContract, seats: number): DeclaredContract =>
+    ({ contract: dc.contract, declarer: Direction.rotated(dc.declarer, seats) })
+
   /** Returns negative if a < b, positive if a > b, 0 if equal. */
   export const compare = (a: DeclaredContract, b: DeclaredContract): number => {
     const cmp = Contract.compare(a.contract, b.contract)
