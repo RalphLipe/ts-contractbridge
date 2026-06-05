@@ -79,7 +79,7 @@ export namespace Auction {
     isComplete(a) && declaredContract(a) === undefined
 
   /** Returns a new Auction with the call appended, or throws AuctionError if invalid. */
-  export const makeCall = (a: Auction, call: Call, note?: string): Auction => {
+  export const makingCall = (a: Auction, call: Call, note?: string): Auction => {
     if (isComplete(a)) throw new AuctionError('auctionAlreadyComplete', 'Auction is already complete')
 
     const caller = nextToAct(a)
@@ -92,7 +92,7 @@ export namespace Auction {
   }
 
   /** Returns a new Auction with the last call removed. */
-  export const removeLast = (a: Auction): Auction =>
+  export const undoingLast = (a: Auction): Auction =>
     ({ ...a, calls: a.calls.slice(0, -1) })
 
   export const rotated = (a: Auction, seats: number): Auction => ({
