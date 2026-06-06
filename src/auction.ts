@@ -87,7 +87,13 @@ export namespace Auction {
 
     const lastNoteNumber = Math.max(0, ...a.calls.map(ac => ac.noteNumber ?? 0))
     const noteNumber = note !== undefined ? lastNoteNumber + 1 : undefined
-    const newCall: AuctionCall = { id: a.calls.length, position: caller, call, note, noteNumber }
+    const newCall: AuctionCall = {
+      id: a.calls.length,
+      position: caller,
+      call,
+      ...(note !== undefined && { note }),
+      ...(noteNumber !== undefined && { noteNumber }),
+    }
     return { ...a, calls: [...a.calls, newCall] }
   }
 
