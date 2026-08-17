@@ -1,34 +1,40 @@
 export type Suit = 'S' | 'H' | 'D' | 'C'
 
-export namespace Suit {
-  export const Spades: Suit   = 'S'
-  export const Hearts: Suit   = 'H'
-  export const Diamonds: Suit = 'D'
-  export const Clubs: Suit    = 'C'
+const Spades: Suit   = 'S'
+const Hearts: Suit   = 'H'
+const Diamonds: Suit = 'D'
+const Clubs: Suit    = 'C'
 
-  export const all: readonly Suit[] = ['S', 'H', 'D', 'C']
+const all: readonly Suit[] = ['S', 'H', 'D', 'C']
 
-  /** Major suits (Spades, Hearts) */
-  export const majors: readonly Suit[] = ['S', 'H']
+/** Major suits (Spades, Hearts) */
+const majors: readonly Suit[] = ['S', 'H']
 
-  /** Minor suits (Diamonds, Clubs) */
-  export const minors: readonly Suit[] = ['D', 'C']
+/** Minor suits (Diamonds, Clubs) */
+const minors: readonly Suit[] = ['D', 'C']
 
-  export const isMajor = (s: Suit): boolean => s === 'S' || s === 'H'
-  export const isMinor = (s: Suit): boolean => s === 'D' || s === 'C'
+const isMajor = (s: Suit): boolean => s === 'S' || s === 'H'
+const isMinor = (s: Suit): boolean => s === 'D' || s === 'C'
 
-  export const isSuit = (x: string): x is Suit =>
-    x === 'S' || x === 'H' || x === 'D' || x === 'C'
+const isSuit = (x: string): x is Suit =>
+  x === 'S' || x === 'H' || x === 'D' || x === 'C'
 
-  /** Higher index = higher-ranking suit (bridge ordering: C < D < H < S) */
-  export const rank = (s: Suit): number => all.indexOf(s)
-  export const bridgeRank = (s: Suit): number => 3 - all.indexOf(s)
+/** Higher index = higher-ranking suit (bridge ordering: C < D < H < S) */
+const rank = (s: Suit): number => all.indexOf(s)
+const bridgeRank = (s: Suit): number => 3 - all.indexOf(s)
 
-  export const name = (s: Suit): string => ({
-    S: 'Spades', H: 'Hearts', D: 'Diamonds', C: 'Clubs'
-  })[s]
+const name = (s: Suit): string => ({
+  S: 'Spades', H: 'Hearts', D: 'Diamonds', C: 'Clubs'
+})[s]
 
-  export const symbol = (s: Suit): string => ({
-    S: '♠', H: '♥', D: '♦', C: '♣'
-  })[s]
+const symbol = (s: Suit): string => ({
+  S: '♠', H: '♥', D: '♦', C: '♣'
+})[s]
+
+export const Suit = {
+  Spades, Hearts, Diamonds, Clubs,
+  all, majors, minors,
+  isMajor, isMinor, isSuit,
+  rank, bridgeRank,
+  name, symbol,
 }

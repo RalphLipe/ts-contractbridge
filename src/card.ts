@@ -5,98 +5,111 @@ import { Rank } from './rank.js'
 
 export type Card = `${Suit}${Rank}`
 
-export namespace Card {
-  // Spades
-  export const aceOfSpades:   Card = 'SA'
-  export const kingOfSpades:  Card = 'SK'
-  export const queenOfSpades: Card = 'SQ'
-  export const jackOfSpades:  Card = 'SJ'
-  export const tenOfSpades:   Card = 'ST'
-  export const nineOfSpades:  Card = 'S9'
-  export const eightOfSpades: Card = 'S8'
-  export const sevenOfSpades: Card = 'S7'
-  export const sixOfSpades:   Card = 'S6'
-  export const fiveOfSpades:  Card = 'S5'
-  export const fourOfSpades:  Card = 'S4'
-  export const threeOfSpades: Card = 'S3'
-  export const twoOfSpades:   Card = 'S2'
+// Spades
+const aceOfSpades:   Card = 'SA'
+const kingOfSpades:  Card = 'SK'
+const queenOfSpades: Card = 'SQ'
+const jackOfSpades:  Card = 'SJ'
+const tenOfSpades:   Card = 'ST'
+const nineOfSpades:  Card = 'S9'
+const eightOfSpades: Card = 'S8'
+const sevenOfSpades: Card = 'S7'
+const sixOfSpades:   Card = 'S6'
+const fiveOfSpades:  Card = 'S5'
+const fourOfSpades:  Card = 'S4'
+const threeOfSpades: Card = 'S3'
+const twoOfSpades:   Card = 'S2'
 
-  // Hearts
-  export const aceOfHearts:   Card = 'HA'
-  export const kingOfHearts:  Card = 'HK'
-  export const queenOfHearts: Card = 'HQ'
-  export const jackOfHearts:  Card = 'HJ'
-  export const tenOfHearts:   Card = 'HT'
-  export const nineOfHearts:  Card = 'H9'
-  export const eightOfHearts: Card = 'H8'
-  export const sevenOfHearts: Card = 'H7'
-  export const sixOfHearts:   Card = 'H6'
-  export const fiveOfHearts:  Card = 'H5'
-  export const fourOfHearts:  Card = 'H4'
-  export const threeOfHearts: Card = 'H3'
-  export const twoOfHearts:   Card = 'H2'
+// Hearts
+const aceOfHearts:   Card = 'HA'
+const kingOfHearts:  Card = 'HK'
+const queenOfHearts: Card = 'HQ'
+const jackOfHearts:  Card = 'HJ'
+const tenOfHearts:   Card = 'HT'
+const nineOfHearts:  Card = 'H9'
+const eightOfHearts: Card = 'H8'
+const sevenOfHearts: Card = 'H7'
+const sixOfHearts:   Card = 'H6'
+const fiveOfHearts:  Card = 'H5'
+const fourOfHearts:  Card = 'H4'
+const threeOfHearts: Card = 'H3'
+const twoOfHearts:   Card = 'H2'
 
-  // Diamonds
-  export const aceOfDiamonds:   Card = 'DA'
-  export const kingOfDiamonds:  Card = 'DK'
-  export const queenOfDiamonds: Card = 'DQ'
-  export const jackOfDiamonds:  Card = 'DJ'
-  export const tenOfDiamonds:   Card = 'DT'
-  export const nineOfDiamonds:  Card = 'D9'
-  export const eightOfDiamonds: Card = 'D8'
-  export const sevenOfDiamonds: Card = 'D7'
-  export const sixOfDiamonds:   Card = 'D6'
-  export const fiveOfDiamonds:  Card = 'D5'
-  export const fourOfDiamonds:  Card = 'D4'
-  export const threeOfDiamonds: Card = 'D3'
-  export const twoOfDiamonds:   Card = 'D2'
+// Diamonds
+const aceOfDiamonds:   Card = 'DA'
+const kingOfDiamonds:  Card = 'DK'
+const queenOfDiamonds: Card = 'DQ'
+const jackOfDiamonds:  Card = 'DJ'
+const tenOfDiamonds:   Card = 'DT'
+const nineOfDiamonds:  Card = 'D9'
+const eightOfDiamonds: Card = 'D8'
+const sevenOfDiamonds: Card = 'D7'
+const sixOfDiamonds:   Card = 'D6'
+const fiveOfDiamonds:  Card = 'D5'
+const fourOfDiamonds:  Card = 'D4'
+const threeOfDiamonds: Card = 'D3'
+const twoOfDiamonds:   Card = 'D2'
 
-  // Clubs
-  export const aceOfClubs:   Card = 'CA'
-  export const kingOfClubs:  Card = 'CK'
-  export const queenOfClubs: Card = 'CQ'
-  export const jackOfClubs:  Card = 'CJ'
-  export const tenOfClubs:   Card = 'CT'
-  export const nineOfClubs:  Card = 'C9'
-  export const eightOfClubs: Card = 'C8'
-  export const sevenOfClubs: Card = 'C7'
-  export const sixOfClubs:   Card = 'C6'
-  export const fiveOfClubs:  Card = 'C5'
-  export const fourOfClubs:  Card = 'C4'
-  export const threeOfClubs: Card = 'C3'
-  export const twoOfClubs:   Card = 'C2'
+// Clubs
+const aceOfClubs:   Card = 'CA'
+const kingOfClubs:  Card = 'CK'
+const queenOfClubs: Card = 'CQ'
+const jackOfClubs:  Card = 'CJ'
+const tenOfClubs:   Card = 'CT'
+const nineOfClubs:  Card = 'C9'
+const eightOfClubs: Card = 'C8'
+const sevenOfClubs: Card = 'C7'
+const sixOfClubs:   Card = 'C6'
+const fiveOfClubs:  Card = 'C5'
+const fourOfClubs:  Card = 'C4'
+const threeOfClubs: Card = 'C3'
+const twoOfClubs:   Card = 'C2'
 
-  /** All 52 cards, ordered S→C high→low */
-  export const all: readonly Card[] = Suit.all.flatMap(s =>
-    Rank.all.map(r => `${s}${r}` as Card)
-  )
+/** All 52 cards, ordered S→C high→low */
+const all: readonly Card[] = Suit.all.flatMap(s =>
+  Rank.all.map(r => `${s}${r}` as Card)
+)
 
-  export const isCard = (x: string): x is Card =>
-    x.length === 2 && Suit.isSuit(x[0]!) && Rank.isRank(x[1]!)
+const isCard = (x: string): x is Card =>
+  x.length === 2 && Suit.isSuit(x[0]!) && Rank.isRank(x[1]!)
 
-  export const pbn = (c: Card): string => c
+const pbn = (c: Card): string => c
 
-  export const fromPBN = (s: string): Card | undefined => {
-    const u = s.toUpperCase()
-    return isCard(u) ? u : undefined
-  }
+const fromPBN = (s: string): Card | undefined => {
+  const u = s.toUpperCase()
+  return isCard(u) ? u : undefined
+}
 
-  export const suit = (c: Card): Suit => c[0] as Suit
-  export const rank = (c: Card): Rank => c[1] as Rank
+const suit = (c: Card): Suit => c[0] as Suit
+const rank = (c: Card): Rank => c[1] as Rank
 
-  /** High card points for this card */
-  export const hcp = (c: Card): number => Rank.hcp(rank(c))
+/** High card points for this card */
+const hcp = (c: Card): number => Rank.hcp(rank(c))
 
-  /** Bridge rank: higher = stronger card, within a suit */
-  export const bridgeRank = (c: Card): number => Rank.bridgeRank(rank(c))
+/** Bridge rank: higher = stronger card, within a suit */
+const bridgeRank = (c: Card): number => Rank.bridgeRank(rank(c))
 
-  export const name = (c: Card): string =>
-    `${Rank.name(rank(c))} of ${Suit.name(suit(c))}`
+const name = (c: Card): string =>
+  `${Rank.name(rank(c))} of ${Suit.name(suit(c))}`
 
-  export const symbol = (c: Card): string =>
-    `${Rank.name(rank(c))}${Suit.symbol(suit(c))}`
+const symbol = (c: Card): string =>
+  `${Rank.name(rank(c))}${Suit.symbol(suit(c))}`
 
-  /** Compare two cards of the same suit (returns negative if a < b) */
-  export const compareRank = (a: Card, b: Card): number =>
-    bridgeRank(a) - bridgeRank(b)
+/** Compare two cards of the same suit (returns negative if a < b) */
+const compareRank = (a: Card, b: Card): number =>
+  bridgeRank(a) - bridgeRank(b)
+
+export const Card = {
+  aceOfSpades, kingOfSpades, queenOfSpades, jackOfSpades, tenOfSpades, nineOfSpades,
+  eightOfSpades, sevenOfSpades, sixOfSpades, fiveOfSpades, fourOfSpades, threeOfSpades, twoOfSpades,
+  aceOfHearts, kingOfHearts, queenOfHearts, jackOfHearts, tenOfHearts, nineOfHearts,
+  eightOfHearts, sevenOfHearts, sixOfHearts, fiveOfHearts, fourOfHearts, threeOfHearts, twoOfHearts,
+  aceOfDiamonds, kingOfDiamonds, queenOfDiamonds, jackOfDiamonds, tenOfDiamonds, nineOfDiamonds,
+  eightOfDiamonds, sevenOfDiamonds, sixOfDiamonds, fiveOfDiamonds, fourOfDiamonds, threeOfDiamonds, twoOfDiamonds,
+  aceOfClubs, kingOfClubs, queenOfClubs, jackOfClubs, tenOfClubs, nineOfClubs,
+  eightOfClubs, sevenOfClubs, sixOfClubs, fiveOfClubs, fourOfClubs, threeOfClubs, twoOfClubs,
+  all,
+  isCard, pbn, fromPBN,
+  suit, rank, hcp, bridgeRank,
+  name, symbol, compareRank,
 }

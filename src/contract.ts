@@ -3,23 +3,29 @@ import { Strain } from './strain.js'
 
 export type Risk = '' | 'X' | 'XX'
 
-export namespace Risk {
-  export const Normal: Risk = ''
-  export const Doubled: Risk = 'X'
-  export const Redoubled: Risk = 'XX'
+const riskNormal: Risk = ''
+const riskDoubled: Risk = 'X'
+const riskRedoubled: Risk = 'XX'
 
-  export const all: readonly Risk[] = ['', 'X', 'XX']
+const riskAll: readonly Risk[] = ['', 'X', 'XX']
 
-  export const isRisk = (s: string): s is Risk =>
-    s === '' || s === 'X' || s === 'XX'
+const isRisk = (s: string): s is Risk =>
+  s === '' || s === 'X' || s === 'XX'
 
-  export const name = (r: Risk): string =>
-    r === '' ? 'Normal' : r === 'X' ? 'Doubled' : 'Redoubled'
+const riskName = (r: Risk): string =>
+  r === '' ? 'Normal' : r === 'X' ? 'Doubled' : 'Redoubled'
 
-  export const fromPBN = (s: string): Risk | undefined => {
-    const u = s.toUpperCase()
-    return isRisk(u) ? u as Risk : undefined
-  }
+const riskFromPBN = (s: string): Risk | undefined => {
+  const u = s.toUpperCase()
+  return isRisk(u) ? u as Risk : undefined
+}
+
+export const Risk = {
+  Normal: riskNormal, Doubled: riskDoubled, Redoubled: riskRedoubled,
+  all: riskAll,
+  isRisk,
+  name: riskName,
+  fromPBN: riskFromPBN,
 }
 
 export type Contract = { readonly bid: Bid; readonly risk: Risk }
@@ -71,64 +77,70 @@ const penaltyScore = (risk: Risk, underTrickCount: number, isVul: boolean): numb
   return risk === 'XX' ? score * 2 : score
 }
 
-export namespace Contract {
-  export const make = (bid: Bid, risk: Risk = ''): Contract => ({ bid, risk })
+const make = (bid: Bid, risk: Risk = ''): Contract => ({ bid, risk })
 
-  export const fromBidParts = (level: number, strain: Strain, risk: Risk = ''): Contract =>
-    make(Bid.make(level, strain), risk)
+const fromBidParts = (level: number, strain: Strain, risk: Risk = ''): Contract =>
+  make(Bid.make(level, strain), risk)
 
-  /** PBN string (e.g. "3NT", "4HX", "5CXX"). */
-  export const pbn = (c: Contract): string => `${c.bid}${c.risk}`
+/** PBN string (e.g. "3NT", "4HX", "5CXX"). */
+const pbn = (c: Contract): string => `${c.bid}${c.risk}`
 
-  export const symbol = (c: Contract): string => `${Bid.symbol(c.bid)}${c.risk}`
+const symbol = (c: Contract): string => `${Bid.symbol(c.bid)}${c.risk}`
 
-  export const fromPBN = (s: string): Contract | undefined => {
-    const u = s.toUpperCase()
-    if (u.length < 2) return undefined
-    let rest = u
-    let risk: Risk = ''
-    if (rest.endsWith('XX')) {
-      risk = 'XX'
-      rest = rest.slice(0, -2)
-    } else if (rest.endsWith('X')) {
-      risk = 'X'
-      rest = rest.slice(0, -1)
-    }
-    const bid = Bid.fromPBN(rest)
-    return bid === undefined ? undefined : { bid, risk }
+const contractFromPBN = (s: string): Contract | undefined => {
+  const u = s.toUpperCase()
+  if (u.length < 2) return undefined
+  let rest = u
+  let risk: Risk = ''
+  if (rest.endsWith('XX')) {
+    risk = 'XX'
+    rest = rest.slice(0, -2)
+  } else if (rest.endsWith('X')) {
+    risk = 'X'
+    rest = rest.slice(0, -1)
   }
+  const bid = Bid.fromPBN(rest)
+  return bid === undefined ? undefined : { bid, risk }
+}
 
-  /** Returns negative if a < b, positive if a > b, 0 if equal. */
-  export const compare = (a: Contract, b: Contract): number => {
-    const bidCmp = Bid.compare(a.bid, b.bid)
-    if (bidCmp !== 0) return bidCmp
-    const riskRank = (r: Risk) => r === '' ? 0 : r === 'X' ? 1 : 2
-    return riskRank(a.risk) - riskRank(b.risk)
-  }
+/** Returns negative if a < b, positive if a > b, 0 if equal. */
+const compare = (a: Contract, b: Contract): number => {
+  const bidCmp = Bid.compare(a.bid, b.bid)
+  if (bidCmp !== 0) return bidCmp
+  const riskRank = (r: Risk) => r === '' ? 0 : r === 'X' ? 1 : 2
+  return riskRank(a.risk) - riskRank(b.risk)
+}
 
-  /** Score for the declarer, given tricksTaken (0-13). Negative if the contract failed. */
-  export const declarerScore = (c: Contract, isVul: boolean, tricksTaken: number): number => {
-    const level = Bid.level(c.bid)
-    const strain = Bid.strain(c.bid)
-    if (tricksTaken >= level + 6) {
-      const contractScore = (firstTrickScore(strain) + trickScore(strain) * (level - 1)) * makingMultiplier(c.risk)
-      const overScore = (tricksTaken - level - 6) * overTrickScore(c.risk, strain, isVul)
-      return contractScore + overScore + makingBonus(contractScore, isVul) + slamBonus(level, isVul) + insultBonus(c.risk)
-    }
-    return penaltyScore(c.risk, level + 6 - tricksTaken, isVul)
+/** Score for the declarer, given tricksTaken (0-13). Negative if the contract failed. */
+const declarerScore = (c: Contract, isVul: boolean, tricksTaken: number): number => {
+  const level = Bid.level(c.bid)
+  const strain = Bid.strain(c.bid)
+  if (tricksTaken >= level + 6) {
+    const contractScore = (firstTrickScore(strain) + trickScore(strain) * (level - 1)) * makingMultiplier(c.risk)
+    const overScore = (tricksTaken - level - 6) * overTrickScore(c.risk, strain, isVul)
+    return contractScore + overScore + makingBonus(contractScore, isVul) + slamBonus(level, isVul) + insultBonus(c.risk)
   }
+  return penaltyScore(c.risk, level + 6 - tricksTaken, isVul)
+}
 
-  /** Tricks taken (0-13) that produce the given declarer score, or undefined if none do. */
-  export const tricksFor = (c: Contract, declarerScoreValue: number, isVul: boolean): number | undefined => {
-    for (let tricks = 0; tricks <= 13; tricks++) {
-      if (declarerScoreValue === declarerScore(c, isVul, tricks)) return tricks
-    }
-    return undefined
+/** Tricks taken (0-13) that produce the given declarer score, or undefined if none do. */
+const tricksFor = (c: Contract, declarerScoreValue: number, isVul: boolean): number | undefined => {
+  for (let tricks = 0; tricks <= 13; tricks++) {
+    if (declarerScoreValue === declarerScore(c, isVul, tricks)) return tricks
   }
+  return undefined
+}
 
-  /** Over/under tricks (0 = made exactly, negative = down) that produced the given score. */
-  export const overUnderTricks = (c: Contract, score: number, isVul: boolean): number | undefined => {
-    const tricks = tricksFor(c, score, isVul)
-    return tricks === undefined ? undefined : tricks - Bid.level(c.bid) - 6
-  }
+/** Over/under tricks (0 = made exactly, negative = down) that produced the given score. */
+const overUnderTricks = (c: Contract, score: number, isVul: boolean): number | undefined => {
+  const tricks = tricksFor(c, score, isVul)
+  return tricks === undefined ? undefined : tricks - Bid.level(c.bid) - 6
+}
+
+export const Contract = {
+  make, fromBidParts,
+  pbn, symbol,
+  fromPBN: contractFromPBN,
+  compare,
+  declarerScore, tricksFor, overUnderTricks,
 }

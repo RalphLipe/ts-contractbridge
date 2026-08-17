@@ -16,10 +16,10 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
   order / NT,S,H,D,C strain order per Swift; 'F'=unknown; bogus all-1's filter preserved from Swift
 - ScoreCalculator → merged into contract.ts (not its own file) — Swift marks it `internal`, only used
   by Contract.declarerScore, so the TS port keeps the arithmetic as non-exported module-private
-  functions and adds Contract.declarerScore/tricksFor/overUnderTricks to the Contract namespace
-- Suit → suit.ts (single-char type alias + namespace)
-- Rank → rank.ts (single-char type alias + namespace)
-- Card → card.ts (string type alias + namespace)
+  functions and adds Contract.declarerScore/tricksFor/overUnderTricks to the Contract object
+- Suit → suit.ts (single-char type alias + const object)
+- Rank → rank.ts (single-char type alias + const object)
+- Card → card.ts (string type alias + const object)
 - Deck → deck.ts (TypeScript-only, no Swift equivalent)
 - Direction + PairDirection → direction.ts
 - Vulnerable → vulnerable.ts
@@ -32,8 +32,16 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 - RotateFn → rotatable.ts (type alias `(value: T, seats: number) => T`; Direction/DeclaredContract/DealOutcome/Auction all support rotated)
 
 ## Coding pattern used
-Swift enums/structs → TypeScript string type alias + namespace object with functions.
-Example: `export type Suit = 'C'|'D'|'H'|'S'` + `export namespace Suit { ... }`
+Swift enums/structs → TypeScript string type alias + a plain `const` companion object holding the
+related functions/constants (NOT `namespace` — that was the original pattern but got refactored
+away across all 17 files in 2026-08 since `namespace` is legacy TS; see [[feedback-namespace]]).
+Example: `export type Suit = 'C'|'D'|'H'|'S'` + `export const Suit = { Spades, all, isSuit, ... }`,
+where each object member is a top-level `const` in the same file (dropped from inside a namespace
+block) and the object literal at the bottom just collects them, using ES2015 shorthand
+(`{ memberName }`) wherever the local const name matches the public key. Only rename a local const
+when two type+object pairs share a file and would collide as flat top-level names (e.g.
+`direction.ts`'s `Direction.all`/`PairDirection.all` → locals `directionAll`/`pairDirectionAll`,
+public key stays `.all` for both).
 Format-specific parsers named `fromPBN`, `fromLIN`, etc. (not generic `parse`).
 
 ## Remaining types (priority order — core domain first)
