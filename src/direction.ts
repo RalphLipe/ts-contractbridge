@@ -1,29 +1,31 @@
 export type PairDirection = 'NS' | 'EW'
 
-const pairDirectionNS: PairDirection = 'NS'
-const pairDirectionEW: PairDirection = 'EW'
+const NS: PairDirection = 'NS'
+const EW: PairDirection = 'EW'
 
+// Renamed from the bare `all` to avoid colliding with Direction's own `all` below, which
+// shares this module (the only case in the file where two type+object pairs collide).
 const pairDirectionAll: readonly PairDirection[] = ['NS', 'EW']
 
-const pairDirectionDirections = (pd: PairDirection): ['N', 'S'] | ['E', 'W'] =>
+const directions = (pd: PairDirection): ['N', 'S'] | ['E', 'W'] =>
   pd === 'NS' ? ['N', 'S'] : ['E', 'W']
 
-const pairDirectionOpponents = (pd: PairDirection): PairDirection =>
+const opponents = (pd: PairDirection): PairDirection =>
   pd === 'NS' ? 'EW' : 'NS'
 
 export const PairDirection = {
-  NS: pairDirectionNS, EW: pairDirectionEW,
+  NS, EW,
   all: pairDirectionAll,
-  directions: pairDirectionDirections,
-  opponents: pairDirectionOpponents,
+  directions,
+  opponents,
 }
 
 export type Direction = 'N' | 'E' | 'S' | 'W'
 
-const directionNorth: Direction = 'N'
-const directionEast:  Direction = 'E'
-const directionSouth: Direction = 'S'
-const directionWest:  Direction = 'W'
+const North: Direction = 'N'
+const East:  Direction = 'E'
+const South: Direction = 'S'
+const West:  Direction = 'W'
 
 /** All four directions in clockwise order */
 const directionAll: readonly Direction[] = ['N', 'E', 'S', 'W']
@@ -31,7 +33,7 @@ const directionAll: readonly Direction[] = ['N', 'E', 'S', 'W']
 const isDirection = (x: string): x is Direction =>
   x === 'N' || x === 'E' || x === 'S' || x === 'W'
 
-const directionName = (d: Direction): string => ({
+const name = (d: Direction): string => ({
   N: 'North', E: 'East', S: 'South', W: 'West'
 })[d]
 
@@ -62,10 +64,10 @@ const pairDirection = (d: Direction): PairDirection =>
   d === 'N' || d === 'S' ? 'NS' : 'EW'
 
 export const Direction = {
-  North: directionNorth, East: directionEast, South: directionSouth, West: directionWest,
+  North, East, South, West,
   all: directionAll,
   isDirection,
-  name: directionName,
+  name,
   dealer, next, previous, partner, rotated,
   pairDirection,
 }

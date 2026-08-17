@@ -3,28 +3,30 @@ import { Strain } from './strain.js'
 
 export type Risk = '' | 'X' | 'XX'
 
-const riskNormal: Risk = ''
-const riskDoubled: Risk = 'X'
-const riskRedoubled: Risk = 'XX'
+const Normal: Risk = ''
+const Doubled: Risk = 'X'
+const Redoubled: Risk = 'XX'
 
-const riskAll: readonly Risk[] = ['', 'X', 'XX']
+const all: readonly Risk[] = ['', 'X', 'XX']
 
 const isRisk = (s: string): s is Risk =>
   s === '' || s === 'X' || s === 'XX'
 
-const riskName = (r: Risk): string =>
+const name = (r: Risk): string =>
   r === '' ? 'Normal' : r === 'X' ? 'Doubled' : 'Redoubled'
 
+// Renamed from the bare `fromPBN` to avoid colliding with Contract's own `fromPBN` below,
+// which shares this module (the only case in the file where two type+object pairs collide).
 const riskFromPBN = (s: string): Risk | undefined => {
   const u = s.toUpperCase()
   return isRisk(u) ? u as Risk : undefined
 }
 
 export const Risk = {
-  Normal: riskNormal, Doubled: riskDoubled, Redoubled: riskRedoubled,
-  all: riskAll,
+  Normal, Doubled, Redoubled,
+  all,
   isRisk,
-  name: riskName,
+  name,
   fromPBN: riskFromPBN,
 }
 
