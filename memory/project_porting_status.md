@@ -8,7 +8,12 @@ metadata:
 Swift source: /Users/ralphlipe/Documents/GitHub/swift-contract-bridge/Sources/ContractBridge/
 TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 
-## Already ported (14 types)
+## Already ported (16 types)
+- Deal → deal.ts (4-hand card distribution, PBN serialization)
+- DoubleDummyTricks (Swift) → DoubleDummyTable → doubleDummyTable.ts (renamed on the TS side only —
+  Ralph felt "Tricks" implied analysis when it's really just a results table; Swift stays
+  DoubleDummyTricks). {N,E,S,W}: Partial<Record<Strain,number>>; pbn/fromPBN use hex digits, N,S,E,W
+  order / NT,S,H,D,C strain order per Swift; 'F'=unknown; bogus all-1's filter preserved from Swift
 - Suit → suit.ts (single-char type alias + namespace)
 - Rank → rank.ts (single-char type alias + namespace)
 - Card → card.ts (string type alias + namespace)
@@ -29,17 +34,13 @@ Example: `export type Suit = 'C'|'D'|'H'|'S'` + `export namespace Suit { ... }`
 Format-specific parsers named `fromPBN`, `fromLIN`, etc. (not generic `parse`).
 
 ## Remaining types (priority order — core domain first)
-1. Deal + Hands — 4-hand card distribution with PBN serialization
-5. Deal + Hands — 4-hand card distribution with PBN serialization
-6. DealOutcome — played/passedOut/average/etc with ns/ew scores
-7. DoubleDummyTricks — 2D Direction×Strain→tricks with hex encoding
-8. ScoreCalculator — internal; computes declarer score
-9. ScoreValidator — caches valid scores per vulnerability
-10. MatchpointCalculator + MatchpointedOutcome — matchpoint scoring
-11. RankSet — bitset for rank subsets (bridge analysis)
-12. CardSet / CardArray extensions — utility functions for card collections
-13. PBN module — full PBN parse/encode (many files)
-14. Analysis module — DoubleDummySolver, LeadGenerator, etc.
+1. ScoreCalculator — internal; computes declarer score
+2. ScoreValidator — caches valid scores per vulnerability
+3. MatchpointCalculator + MatchpointedOutcome — matchpoint scoring
+4. RankSet — bitset for rank subsets (bridge analysis)
+5. CardSet / CardArray extensions — utility functions for card collections
+6. PBN module — full PBN parse/encode (many files)
+7. Analysis module — DoubleDummySolver, LeadGenerator, etc.
 
 **Why:** User is porting one type at a time; Swift project is the authoritative reference.
 **How to apply:** When user asks to port the next type, read the corresponding Swift file first, then implement using the existing TS type-alias+namespace pattern.
