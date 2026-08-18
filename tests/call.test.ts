@@ -47,7 +47,7 @@ describe('Call', () => {
   it('pbn round-trips', () => {
     const calls: Call[] = ['Pass', 'X', 'XX', '3NT', '1C']
     for (const c of calls) {
-      expect(Call.fromPBN(Call.pbn(c))).toBe(c)
+      expect(Call.fromPBN(Call.toPBN(c))).toBe(c)
     }
   })
 

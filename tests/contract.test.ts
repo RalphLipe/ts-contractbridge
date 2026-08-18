@@ -51,9 +51,9 @@ describe('Contract', () => {
   })
 
   it('pbn', () => {
-    expect(Contract.pbn(Contract.make('3NT'))).toBe('3NT')
-    expect(Contract.pbn(Contract.make('4H', 'X'))).toBe('4HX')
-    expect(Contract.pbn(Contract.make('5C', 'XX'))).toBe('5CXX')
+    expect(Contract.toPBN(Contract.make('3NT'))).toBe('3NT')
+    expect(Contract.toPBN(Contract.make('4H', 'X'))).toBe('4HX')
+    expect(Contract.toPBN(Contract.make('5C', 'XX'))).toBe('5CXX')
   })
 
   it('fromPBN', () => {
@@ -70,7 +70,7 @@ describe('Contract', () => {
       Contract.make('6C', 'XX'),
     ]
     for (const c of contracts) {
-      expect(Contract.fromPBN(Contract.pbn(c))).toEqual(c)
+      expect(Contract.fromPBN(Contract.toPBN(c))).toEqual(c)
     }
   })
 

@@ -37,30 +37,30 @@ describe('DealOutcome', () => {
   })
 
   it('pbn for keywords', () => {
-    expect(DealOutcome.pbn(DealOutcome.passedOut)).toBe('Pass')
-    expect(DealOutcome.pbn(DealOutcome.average)).toBe('AVE')
-    expect(DealOutcome.pbn(DealOutcome.averagePlus)).toBe('AVE+')
-    expect(DealOutcome.pbn(DealOutcome.averageMinus)).toBe('AVE-')
-    expect(DealOutcome.pbn(DealOutcome.noScore)).toBe('NS')
+    expect(DealOutcome.toPBN(DealOutcome.passedOut)).toBe('Pass')
+    expect(DealOutcome.toPBN(DealOutcome.average)).toBe('AVE')
+    expect(DealOutcome.toPBN(DealOutcome.averagePlus)).toBe('AVE+')
+    expect(DealOutcome.toPBN(DealOutcome.averageMinus)).toBe('AVE-')
+    expect(DealOutcome.toPBN(DealOutcome.noScore)).toBe('NS')
   })
 
   it('pbn for scoreOnly', () => {
-    expect(DealOutcome.pbn(DealOutcome.scoreOnly(100))).toBe('100')
-    expect(DealOutcome.pbn(DealOutcome.scoreOnly(-50))).toBe('-50')
+    expect(DealOutcome.toPBN(DealOutcome.scoreOnly(100))).toBe('100')
+    expect(DealOutcome.toPBN(DealOutcome.scoreOnly(-50))).toBe('-50')
   })
 
   it('pbn for played: making exactly', () => {
-    expect(DealOutcome.pbn(DealOutcome.played(dc, 9))).toBe('3NTW=')
+    expect(DealOutcome.toPBN(DealOutcome.played(dc, 9))).toBe('3NTW=')
   })
 
   it('pbn for played: overtricks', () => {
-    expect(DealOutcome.pbn(DealOutcome.played(dc, 10))).toBe('3NTW+1')
-    expect(DealOutcome.pbn(DealOutcome.played(dcDoubled, 12))).toBe('4HXN+2')
+    expect(DealOutcome.toPBN(DealOutcome.played(dc, 10))).toBe('3NTW+1')
+    expect(DealOutcome.toPBN(DealOutcome.played(dcDoubled, 12))).toBe('4HXN+2')
   })
 
   it('pbn for played: undertricks', () => {
-    expect(DealOutcome.pbn(DealOutcome.played(dc, 8))).toBe('3NTW-1')
-    expect(DealOutcome.pbn(DealOutcome.played(dc, 6))).toBe('3NTW-3')
+    expect(DealOutcome.toPBN(DealOutcome.played(dc, 8))).toBe('3NTW-1')
+    expect(DealOutcome.toPBN(DealOutcome.played(dc, 6))).toBe('3NTW-3')
   })
 
   it('fromPBN keywords', () => {
@@ -135,7 +135,7 @@ describe('DealOutcome', () => {
       DealOutcome.noScore,
     ]
     for (const o of outcomes) {
-      expect(DealOutcome.fromPBN(DealOutcome.pbn(o))).toEqual(o)
+      expect(DealOutcome.fromPBN(DealOutcome.toPBN(o))).toEqual(o)
     }
   })
 })

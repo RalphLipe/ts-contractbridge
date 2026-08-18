@@ -1,5 +1,6 @@
 import { Contract } from './contract.js'
 import { Direction } from './direction.js'
+import { PBNCodable } from './pbnCodable.js'
 
 export type DeclaredContract = { readonly contract: Contract; readonly declarer: Direction }
 
@@ -7,8 +8,8 @@ const make = (contract: Contract, declarer: Direction): DeclaredContract =>
   ({ contract, declarer })
 
 /** String representation: contract PBN followed by declarer (e.g. "3NTW", "5DXE"). */
-const pbn = (dc: DeclaredContract): string =>
-  `${Contract.pbn(dc.contract)}${dc.declarer}`
+const toPBN = (dc: DeclaredContract): string =>
+  `${Contract.toPBN(dc.contract)}${dc.declarer}`
 
 const symbol = (dc: DeclaredContract): string =>
   `${Contract.symbol(dc.contract)}${dc.declarer}`
@@ -33,5 +34,7 @@ const compare = (a: DeclaredContract, b: DeclaredContract): number => {
 }
 
 export const DeclaredContract = {
-  make, pbn, symbol, fromPBN, rotated, compare,
+  make, toPBN, symbol, fromPBN, rotated, compare,
 }
+
+DeclaredContract satisfies PBNCodable<DeclaredContract>

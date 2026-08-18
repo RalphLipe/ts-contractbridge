@@ -30,14 +30,14 @@ describe('DoubleDummyTable', () => {
 
   it('round-trips through PBN', () => {
     const dd = DoubleDummyTable.fromPBN(SAMPLE_PBN)!
-    expect(DoubleDummyTable.pbn(dd)).toBe(SAMPLE_PBN)
+    expect(DoubleDummyTable.toPBN(dd)).toBe(SAMPLE_PBN)
   })
 
   it('treats F digits as unknown', () => {
     const pbn = 'F'.repeat(20)
     const dd = DoubleDummyTable.fromPBN(pbn)!
     expect(dd.N).toEqual({})
-    expect(DoubleDummyTable.pbn(dd)).toBe(pbn)
+    expect(DoubleDummyTable.toPBN(dd)).toBe(pbn)
   })
 
   it('rejects a string of the wrong length', () => {

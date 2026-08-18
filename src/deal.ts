@@ -2,6 +2,7 @@ import { Card } from './card.js'
 import { Suit } from './suit.js'
 import { Rank } from './rank.js'
 import { Direction } from './direction.js'
+import { PBNCodable } from './pbnCodable.js'
 
 export type Hand  = ReadonlySet<Card>
 export type Hands = Readonly<Record<Direction, Hand>>
@@ -141,3 +142,5 @@ const cardsInSuit = (hand: Hand, suit: Suit): Card[] =>
 export const Deal = {
   make, positionFor, validate, toPBN, fromPBN, rotated, addCard, removeCard, hcp, cardsInSuit,
 }
+
+Deal satisfies PBNCodable<Deal, DealError>

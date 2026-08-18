@@ -1,5 +1,6 @@
 import { Bid } from './bid.js'
 import { DeclaredContract } from './declaredContract.js'
+import { PBNCodable } from './pbnCodable.js'
 
 export type DealOutcome =
   | { readonly kind: 'played';      readonly declaredContract: DeclaredContract; readonly tricksTaken: number }
@@ -26,12 +27,12 @@ const declaredContract = (o: DealOutcome): DeclaredContract | undefined =>
   o.kind === 'played' ? o.declaredContract : undefined
 
 /** PBN-style string representation (e.g. "3NTW=", "4HXN+1", "AVE+", "PASS", "-50"). */
-const pbn = (o: DealOutcome): string => {
+const toPBN = (o: DealOutcome): string => {
   switch (o.kind) {
     case 'played': {
       const overUnder = o.tricksTaken - (Bid.level(o.declaredContract.contract.bid) + 6)
       const suffix = overUnder === 0 ? '=' : overUnder > 0 ? `+${overUnder}` : `${overUnder}`
-      return `${DeclaredContract.pbn(o.declaredContract)}${suffix}`
+      return `${DeclaredContract.toPBN(o.declaredContract)}${suffix}`
     }
     case 'scoreOnly':    return `${o.nsScore}`
     case 'passedOut':    return 'Pass'
@@ -88,5 +89,7 @@ const fromPBN = (s: string): DealOutcome | undefined => {
 export const DealOutcome = {
   played, scoreOnly,
   passedOut, average, averagePlus, averageMinus, noScore,
-  declaredContract, pbn, rotated, fromPBN,
+  declaredContract, toPBN, rotated, fromPBN,
 }
+
+DealOutcome satisfies PBNCodable<DealOutcome>

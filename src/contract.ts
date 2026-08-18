@@ -1,5 +1,6 @@
 import { Bid } from './bid.js'
 import { Strain } from './strain.js'
+import { PBNCodable } from './pbnCodable.js'
 
 export type Risk = '' | 'X' | 'XX'
 
@@ -85,7 +86,7 @@ const fromBidParts = (level: number, strain: Strain, risk: Risk = ''): Contract 
   make(Bid.make(level, strain), risk)
 
 /** PBN string (e.g. "3NT", "4HX", "5CXX"). */
-const pbn = (c: Contract): string => `${c.bid}${c.risk}`
+const toPBN = (c: Contract): string => `${c.bid}${c.risk}`
 
 const symbol = (c: Contract): string => `${Bid.symbol(c.bid)}${c.risk}`
 
@@ -141,8 +142,10 @@ const overUnderTricks = (c: Contract, score: number, isVul: boolean): number | u
 
 export const Contract = {
   make, fromBidParts,
-  pbn, symbol,
+  toPBN, symbol,
   fromPBN: contractFromPBN,
   compare,
   declarerScore, tricksFor, overUnderTricks,
 }
+
+Contract satisfies PBNCodable<Contract>

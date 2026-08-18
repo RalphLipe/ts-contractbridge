@@ -1,5 +1,6 @@
 import { Suit } from './suit.js'
 import { Rank } from './rank.js'
+import { PBNCodable } from './pbnCodable.js'
 
 // PBN format: suit first, then rank — e.g. "SA" = Ace of Spades, "CT" = Ten of Clubs
 
@@ -73,7 +74,7 @@ const all: readonly Card[] = Suit.all.flatMap(s =>
 const isCard = (x: string): x is Card =>
   x.length === 2 && Suit.isSuit(x[0]!) && Rank.isRank(x[1]!)
 
-const pbn = (c: Card): string => c
+const toPBN = (c: Card): string => c
 
 const fromPBN = (s: string): Card | undefined => {
   const u = s.toUpperCase()
@@ -109,7 +110,9 @@ export const Card = {
   aceOfClubs, kingOfClubs, queenOfClubs, jackOfClubs, tenOfClubs, nineOfClubs,
   eightOfClubs, sevenOfClubs, sixOfClubs, fiveOfClubs, fourOfClubs, threeOfClubs, twoOfClubs,
   all,
-  isCard, pbn, fromPBN,
+  isCard, toPBN, fromPBN,
   suit, rank, hcp, bridgeRank,
   name, symbol, compareRank,
 }
+
+Card satisfies PBNCodable<Card>

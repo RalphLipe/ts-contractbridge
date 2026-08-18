@@ -1,4 +1,5 @@
 import { Bid } from './bid.js'
+import { PBNCodable } from './pbnCodable.js'
 
 export type Call = Bid | 'Pass' | 'X' | 'XX'
 
@@ -21,7 +22,7 @@ const fromPBN = (s: string): Call | undefined => {
 }
 
 /** PBN string representation */
-const pbn = (c: Call): string => c
+const toPBN = (c: Call): string => c
 
 /** Convenience: construct a bid call from level and strain */
 const bid = (level: number, strain: Parameters<typeof Bid.make>[1]): Call =>
@@ -30,5 +31,7 @@ const bid = (level: number, strain: Parameters<typeof Bid.make>[1]): Call =>
 export const Call = {
   Pass, Double, Redouble,
   isPass, isDouble, isRedouble, isBid,
-  fromPBN, pbn, bid,
+  fromPBN, toPBN, bid,
 }
+
+Call satisfies PBNCodable<Call>

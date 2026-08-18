@@ -46,8 +46,8 @@ describe('Card', () => {
   })
 
   it('pbn is identity', () => {
-    expect(Card.pbn('SA')).toBe('SA')
-    expect(Card.pbn('CT')).toBe('CT')
+    expect(Card.toPBN('SA')).toBe('SA')
+    expect(Card.toPBN('CT')).toBe('CT')
   })
 
   it('fromPBN accepts uppercase and lowercase', () => {

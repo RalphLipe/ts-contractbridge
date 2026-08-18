@@ -1,5 +1,6 @@
 import { Direction } from './direction.js'
 import { Strain } from './strain.js'
+import { PBNCodable } from './pbnCodable.js'
 
 export type Tricks = { readonly [strain in Strain]?: number }
 export type DoubleDummyTable = { readonly [direction in Direction]: Tricks }
@@ -18,7 +19,7 @@ const withTricks = (
 const directionsInOrder: readonly Direction[] = ['N', 'S', 'E', 'W']
 const strainsInOrder: readonly Strain[] = ['NT', 'S', 'H', 'D', 'C']
 
-const pbn = (dd: DoubleDummyTable): string => {
+const toPBN = (dd: DoubleDummyTable): string => {
   let result = ''
   for (const direction of directionsInOrder) {
     for (const strain of strainsInOrder) {
@@ -65,5 +66,7 @@ const rotated = (dd: DoubleDummyTable, seats: number): DoubleDummyTable => {
 }
 
 export const DoubleDummyTable = {
-  make, withTricks, pbn, fromPBN, rotated,
+  make, withTricks, toPBN, fromPBN, rotated,
 }
+
+DoubleDummyTable satisfies PBNCodable<DoubleDummyTable>
