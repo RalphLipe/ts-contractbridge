@@ -8,7 +8,18 @@ metadata:
 Swift source: /Users/ralphlipe/Documents/GitHub/swift-contract-bridge/Sources/ContractBridge/
 TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 
-## Already ported (17 types)
+## Already ported (19 types)
+- MatchpointCalculator + MatchpointedOutcome → matchpointCalculator.ts / matchpointedOutcome.ts.
+  Required adding `DealOutcome.nsScore`/`ewScore` first (deliberately left out when DealOutcome was
+  first ported, before Contract.declarerScore existed — now wired up). **Design note:** Swift's
+  MatchpointCalculator groups/counts outcomes in a `[DealOutcome: MatchpointedOutcome]` dictionary,
+  relying on DealOutcome's structural `Hashable`. A JS `Map` keyed by the DealOutcome object itself
+  would use *reference* equality instead, silently failing to merge two separately-constructed but
+  content-identical DealOutcomes (exactly the case this function exists to count). Fixed by keying
+  the merge step on `DealOutcome.toPBN(outcome)` (a string) instead of the object — verified with a
+  test that builds the "same" outcome from two separate DeclaredContract instances and confirms they
+  merge. Same "TODO" limitation carried over from Swift: outcomes with no N/S score (AVE/AVE+/AVE-/
+  NoScore) are excluded from the matchpointed field entirely rather than being factored in properly.
 - Deal → deal.ts (4-hand card distribution, PBN serialization)
 - DoubleDummyTricks (Swift) → DoubleDummyTable → doubleDummyTable.ts (renamed on the TS side only —
   Ralph felt "Tricks" implied analysis when it's really just a results table; Swift stays
@@ -28,7 +39,9 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 - Call → call.ts (union type: Bid | 'Pass' | 'X' | 'XX')
 - Risk + Contract → contract.ts (Risk = '' | 'X' | 'XX'; Contract = { bid, risk } only — no declarer)
 - DeclaredContract → declaredContract.ts ({ contract, declarer }; toPBN = contract toPBN + direction, e.g. "3NTW")
-- DealOutcome → dealOutcome.ts (discriminated union on `kind`; nsScore/ewScore omitted — depend on scoring)
+- DealOutcome → dealOutcome.ts (discriminated union on `kind`; nsScore/ewScore added 2026-08 once
+  Contract.declarerScore existed — passedOut=0, played=declarerScore negated for an EW declarer,
+  scoreOnly=stored value, average*/noScore=undefined. ewScore normalizes -0 to 0.)
 - Auction + AuctionCall + AuctionError → auction.ts (immutable; makingCall/undoingLast return new instances; no PBN parsing)
 - RotateFn → rotatable.ts (type alias `(value: T, seats: number) => T`; Direction/PairDirection/DeclaredContract/DealOutcome/Auction/Deal/DoubleDummyTable/Vulnerable all support rotated)
 
@@ -70,13 +83,16 @@ interface, but does not reject a reference of a type that's merely assignable/wi
 **How to apply:** Every future port with both a "to PBN" and "from PBN" function should follow this
 — add the `satisfies PBNCodable<X>` line, don't skip it.
 
+## Skipped — intentionally not porting
+- **ScoreValidator** — precomputes every achievable N/S score (all vulnerabilities × contracts ×
+  declarers × tricks) into a set, to answer "could this score possibly be valid?". Ralph decided
+  2026-08 to skip this permanently — not a "do later," don't suggest porting it again.
+
 ## Remaining types (priority order — core domain first)
-1. ScoreValidator — caches valid scores per vulnerability
-2. MatchpointCalculator + MatchpointedOutcome — matchpoint scoring
-3. RankSet — bitset for rank subsets (bridge analysis)
-4. CardSet / CardArray extensions — utility functions for card collections
-5. PBN module — full PBN parse/encode (many files, includes Game/Document — see mutability note below)
-6. Analysis module — DoubleDummySolver, LeadGenerator, etc.
+1. RankSet — bitset for rank subsets (bridge analysis)
+2. CardSet / CardArray extensions — utility functions for card collections
+3. PBN module — full PBN parse/encode (many files, includes Game/Document — see mutability note below)
+4. Analysis module — DoubleDummySolver, LeadGenerator, etc.
 
 ## Mutability: values vs. documents
 Confirmed 2026-08: Ralph wants the small domain value types (Direction, Card, Rank, Suit, Strain,
