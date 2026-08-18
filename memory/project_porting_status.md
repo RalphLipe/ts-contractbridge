@@ -13,7 +13,8 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 - DoubleDummyTricks (Swift) → DoubleDummyTable → doubleDummyTable.ts (renamed on the TS side only —
   Ralph felt "Tricks" implied analysis when it's really just a results table; Swift stays
   DoubleDummyTricks). {N,E,S,W}: Partial<Record<Strain,number>>; pbn/fromPBN use hex digits, N,S,E,W
-  order / NT,S,H,D,C strain order per Swift; 'F'=unknown; bogus all-1's filter preserved from Swift
+  order / NT,S,H,D,C strain order per Swift; 'F'=unknown; bogus all-1's filter preserved from Swift.
+  Output function is `toPBN`, not `pbn` (see PBNCodable note below).
 - ScoreCalculator → merged into contract.ts (not its own file) — Swift marks it `internal`, only used
   by Contract.declarerScore, so the TS port keeps the arithmetic as non-exported module-private
   functions and adds Contract.declarerScore/tricksFor/overUnderTricks to the Contract object
@@ -26,10 +27,10 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 - Strain + Bid → bid.ts (Strain is nested in Swift but is separate in TS)
 - Call → call.ts (union type: Bid | 'Pass' | 'X' | 'XX')
 - Risk + Contract → contract.ts (Risk = '' | 'X' | 'XX'; Contract = { bid, risk } only — no declarer)
-- DeclaredContract → declaredContract.ts ({ contract, declarer }; pbn = contract pbn + direction, e.g. "3NTW")
+- DeclaredContract → declaredContract.ts ({ contract, declarer }; toPBN = contract toPBN + direction, e.g. "3NTW")
 - DealOutcome → dealOutcome.ts (discriminated union on `kind`; nsScore/ewScore omitted — depend on scoring)
 - Auction + AuctionCall + AuctionError → auction.ts (immutable; makingCall/undoingLast return new instances; no PBN parsing)
-- RotateFn → rotatable.ts (type alias `(value: T, seats: number) => T`; Direction/DeclaredContract/DealOutcome/Auction all support rotated)
+- RotateFn → rotatable.ts (type alias `(value: T, seats: number) => T`; Direction/PairDirection/DeclaredContract/DealOutcome/Auction/Deal/DoubleDummyTable/Vulnerable all support rotated)
 
 ## Coding pattern used
 Swift enums/structs → TypeScript string type alias + a plain `const` companion object holding the
@@ -44,13 +45,54 @@ when two type+object pairs share a file and would collide as flat top-level name
 public key stays `.all` for both).
 Format-specific parsers named `fromPBN`, `fromLIN`, etc. (not generic `parse`).
 
+## PBNCodable pattern (2026-08)
+Types that both parse from and serialize to a PBN string get `toPBN`/`fromPBN` (not a bare `pbn` —
+that was the original naming, mismatched with `fromPBN`; renamed for symmetry). Their companion
+object is checked against `src/pbnCodable.ts`'s `PBNCodable<T, E = undefined>` interface (the TS
+structural analog of Swift's `PBNCodable` protocol) via `X satisfies PBNCodable<X>` right after the
+object's declaration — e.g. `Card satisfies PBNCodable<Card>`, `Deal satisfies PBNCodable<Deal,
+DealError>` (Deal's `fromPBN` returns `DealError` on failure instead of `undefined`, hence the 2nd
+type param). This is compile-time-only, zero runtime cost. Applies today to: Card, Call, Contract,
+DeclaredContract, DealOutcome, DoubleDummyTable, Deal, Vulnerable, Direction, PairDirection — NOT
+Suit/Rank/Strain, which validate via `isX` type guards instead of parsing (no separate string
+transform needed) and so don't have `toPBN`/`fromPBN` at all. **Caution:** don't assume "value
+already looks like its own PBN string" means no real `fromPBN` is needed, or that a type lacking
+`fromPBN` today is correct — check the Swift source's `PBNCodable` conformance and `init(pbn:)`
+first; this was missed initially for Vulnerable, Direction, and PairDirection (all conform in
+Swift). Vulnerable's `fromPBN` also isn't just validation, it accepts synonyms ("LOVE"/"-" for
+None, "BOTH" for All) case-insensitively, unlike `isVulnerable`.
+**When two type+object pairs share a file** (direction.ts has both Direction and PairDirection),
+watch for `toPBN`/`fromPBN`/`rotated` colliding too, not just `all`/`fromPBN` from the earlier
+namespace-flattening pass — PairDirection's got the same `pairDirection`-prefix treatment.
+**Note:** `satisfies` must be applied to the already-declared const (a reference), never to the
+object literal directly — TS's excess-property check rejects a literal with more members than the
+interface, but does not reject a reference of a type that's merely assignable/wider.
+**How to apply:** Every future port with both a "to PBN" and "from PBN" function should follow this
+— add the `satisfies PBNCodable<X>` line, don't skip it.
+
 ## Remaining types (priority order — core domain first)
 1. ScoreValidator — caches valid scores per vulnerability
 2. MatchpointCalculator + MatchpointedOutcome — matchpoint scoring
 3. RankSet — bitset for rank subsets (bridge analysis)
 4. CardSet / CardArray extensions — utility functions for card collections
-5. PBN module — full PBN parse/encode (many files)
+5. PBN module — full PBN parse/encode (many files, includes Game/Document — see mutability note below)
 6. Analysis module — DoubleDummySolver, LeadGenerator, etc.
 
-**Why:** User is porting one type at a time; Swift project is the authoritative reference.
-**How to apply:** When user asks to port the next type, read the corresponding Swift file first, then implement using the existing TS type-alias+namespace pattern.
+## Mutability: values vs. documents
+Confirmed 2026-08: Ralph wants the small domain value types (Direction, Card, Rank, Suit, Strain,
+Bid, Call, Contract, Risk, DeclaredContract, DealOutcome, Deal, Auction, DoubleDummyTable, Vulnerable)
+to stay immutable, using the plain-type + const-companion-object pattern above. But PBN **Game** and
+**Document** (in the not-yet-ported PBN module, e.g. Swift's `PBN/Game.swift`) are expected to be
+**mutable classes** — they represent an editable document a user loads/edits/saves (holding a Deal,
+an Auction, comments, tags, etc.), which is a different kind of thing than a derived/atomic value.
+**Why:** Ralph prefers OOP generally and pushed back on the const-object pattern for everything; on
+reflection he agrees atomic values (rotated/derived facts about a board) should stay immutable like
+the current pattern, but a Game/Document users actively edit should be a normal mutable object, not
+force-fit into copy-and-return-a-new-instance style.
+**How to apply:** When porting the PBN module, don't default to the immutable type+const-object
+pattern for Game/Document — ask Ralph to confirm the class design (likely a real `class` with
+mutable fields/methods) before implementing. Everything else in the PBN module that's a plain value
+(tags, individual PBN records) can probably still follow the immutable pattern; check per-type.
+
+**Why (porting order):** User is porting one type at a time; Swift project is the authoritative reference.
+**How to apply (porting order):** When user asks to port the next type, read the corresponding Swift file first, then implement using the existing TS type-alias+const-object pattern (except Game/Document, see above).

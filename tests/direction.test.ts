@@ -64,6 +64,30 @@ describe('Direction', () => {
     expect(Direction.pairDirection('E')).toBe('EW')
     expect(Direction.pairDirection('W')).toBe('EW')
   })
+
+  it('toPBN returns the single-character code', () => {
+    expect(Direction.toPBN('N')).toBe('N')
+    expect(Direction.toPBN('E')).toBe('E')
+    expect(Direction.toPBN('S')).toBe('S')
+    expect(Direction.toPBN('W')).toBe('W')
+  })
+
+  it('fromPBN parses direction strings case-insensitively', () => {
+    expect(Direction.fromPBN('N')).toBe('N')
+    expect(Direction.fromPBN('n')).toBe('N')
+    expect(Direction.fromPBN('w')).toBe('W')
+  })
+
+  it('fromPBN returns undefined for invalid input', () => {
+    expect(Direction.fromPBN('X')).toBeUndefined()
+    expect(Direction.fromPBN('')).toBeUndefined()
+  })
+
+  it('pbn round-trips', () => {
+    for (const d of Direction.all) {
+      expect(Direction.fromPBN(Direction.toPBN(d))).toBe(d)
+    }
+  })
 })
 
 describe('PairDirection', () => {
@@ -79,5 +103,35 @@ describe('PairDirection', () => {
   it('returns the opposing pair', () => {
     expect(PairDirection.opponents('NS')).toBe('EW')
     expect(PairDirection.opponents('EW')).toBe('NS')
+  })
+
+  it('toPBN returns the two-character code', () => {
+    expect(PairDirection.toPBN('NS')).toBe('NS')
+    expect(PairDirection.toPBN('EW')).toBe('EW')
+  })
+
+  it('fromPBN parses pair-direction strings case-insensitively', () => {
+    expect(PairDirection.fromPBN('NS')).toBe('NS')
+    expect(PairDirection.fromPBN('ns')).toBe('NS')
+    expect(PairDirection.fromPBN('ew')).toBe('EW')
+  })
+
+  it('fromPBN returns undefined for invalid input', () => {
+    expect(PairDirection.fromPBN('X')).toBeUndefined()
+    expect(PairDirection.fromPBN('')).toBeUndefined()
+  })
+
+  it('pbn round-trips', () => {
+    for (const pd of PairDirection.all) {
+      expect(PairDirection.fromPBN(PairDirection.toPBN(pd))).toBe(pd)
+    }
+  })
+
+  it('rotated: unchanged on even seats, swaps to opponents on odd seats', () => {
+    expect(PairDirection.rotated('NS', 0)).toBe('NS')
+    expect(PairDirection.rotated('NS', 1)).toBe('EW')
+    expect(PairDirection.rotated('NS', 2)).toBe('NS')
+    expect(PairDirection.rotated('EW', 1)).toBe('NS')
+    expect(PairDirection.rotated('EW', 3)).toBe('NS')
   })
 })

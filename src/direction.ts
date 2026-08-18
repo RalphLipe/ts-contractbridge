@@ -1,3 +1,5 @@
+import { PBNCodable } from './pbnCodable.js'
+
 export type PairDirection = 'NS' | 'EW'
 
 const NS: PairDirection = 'NS'
@@ -13,12 +15,31 @@ const directions = (pd: PairDirection): ['N', 'S'] | ['E', 'W'] =>
 const opponents = (pd: PairDirection): PairDirection =>
   pd === 'NS' ? 'EW' : 'NS'
 
+// `toPBN`/`fromPBN`/`rotated` are prefixed to avoid colliding with Direction's own bare
+// versions below, which share this module.
+const pairDirectionToPBN = (pd: PairDirection): string => pd
+
+/** Parse a PBN pair-direction string ("NS", "EW"), case-insensitively. */
+const pairDirectionFromPBN = (s: string): PairDirection | undefined => {
+  const u = s.toUpperCase()
+  return u === 'NS' || u === 'EW' ? u : undefined
+}
+
+/** Same pair on even seats; swaps to the opposing pair on odd seats. */
+const pairDirectionRotated = (pd: PairDirection, seats: number): PairDirection =>
+  seats % 2 === 0 ? pd : opponents(pd)
+
 export const PairDirection = {
   NS, EW,
   all: pairDirectionAll,
   directions,
   opponents,
+  toPBN: pairDirectionToPBN,
+  fromPBN: pairDirectionFromPBN,
+  rotated: pairDirectionRotated,
 }
+
+PairDirection satisfies PBNCodable<PairDirection>
 
 export type Direction = 'N' | 'E' | 'S' | 'W'
 
@@ -32,6 +53,14 @@ const directionAll: readonly Direction[] = ['N', 'E', 'S', 'W']
 
 const isDirection = (x: string): x is Direction =>
   x === 'N' || x === 'E' || x === 'S' || x === 'W'
+
+const toPBN = (d: Direction): string => d
+
+/** Parse a PBN direction string ("N", "E", "S", "W"), case-insensitively. */
+const fromPBN = (s: string): Direction | undefined => {
+  const u = s.toUpperCase()
+  return isDirection(u) ? u : undefined
+}
 
 const name = (d: Direction): string => ({
   N: 'North', E: 'East', S: 'South', W: 'West'
@@ -67,7 +96,10 @@ export const Direction = {
   North, East, South, West,
   all: directionAll,
   isDirection,
+  toPBN, fromPBN,
   name,
   dealer, next, previous, partner, rotated,
   pairDirection,
 }
+
+Direction satisfies PBNCodable<Direction>
