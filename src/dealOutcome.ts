@@ -1,5 +1,8 @@
 import { Bid } from './bid.js'
+import { Contract } from './contract.js'
 import { DeclaredContract } from './declaredContract.js'
+import { Direction } from './direction.js'
+import { Vulnerable } from './vulnerable.js'
 import { PBNCodable } from './pbnCodable.js'
 
 export type DealOutcome =
@@ -25,6 +28,23 @@ const noScore:      DealOutcome = { kind: 'noScore' }
 
 const declaredContract = (o: DealOutcome): DeclaredContract | undefined =>
   o.kind === 'played' ? o.declaredContract : undefined
+
+/** N/S score for this outcome, or undefined if it has none (e.g. AVE/AVE+/AVE-/NS). */
+const nsScore = (o: DealOutcome, vulnerable: Vulnerable): number | undefined => {
+  if (o.kind === 'passedOut') return 0
+  if (o.kind === 'played') {
+    const { contract, declarer } = o.declaredContract
+    const declarerScore = Contract.declarerScore(contract, Vulnerable.isVulDirection(vulnerable, declarer), o.tricksTaken)
+    return Direction.pairDirection(declarer) === 'NS' ? declarerScore : -declarerScore
+  }
+  if (o.kind === 'scoreOnly') return o.nsScore
+  return undefined
+}
+
+const ewScore = (o: DealOutcome, vulnerable: Vulnerable): number | undefined => {
+  const score = nsScore(o, vulnerable)
+  return score === undefined ? undefined : score === 0 ? 0 : -score
+}
 
 /** PBN-style string representation (e.g. "3NTW=", "4HXN+1", "AVE+", "PASS", "-50"). */
 const toPBN = (o: DealOutcome): string => {
@@ -89,7 +109,7 @@ const fromPBN = (s: string): DealOutcome | undefined => {
 export const DealOutcome = {
   played, scoreOnly,
   passedOut, average, averagePlus, averageMinus, noScore,
-  declaredContract, toPBN, rotated, fromPBN,
+  declaredContract, nsScore, ewScore, toPBN, rotated, fromPBN,
 }
 
 DealOutcome satisfies PBNCodable<DealOutcome>

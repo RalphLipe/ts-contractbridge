@@ -121,6 +121,44 @@ describe('DealOutcome', () => {
     expect(DealOutcome.rotated(DealOutcome.noScore, 3)).toEqual(DealOutcome.noScore)
   })
 
+  describe('nsScore / ewScore', () => {
+    it('played: negates the declarer score for an EW declarer', () => {
+      // dc = 3NT by W, making exactly (9 tricks). Not vul: 400. EW declared, so N/S score is -400.
+      expect(DealOutcome.nsScore(DealOutcome.played(dc, 9), 'None')).toBe(-400)
+      expect(DealOutcome.ewScore(DealOutcome.played(dc, 9), 'None')).toBe(400)
+    })
+
+    it('played: keeps the declarer score as-is for an NS declarer', () => {
+      // dcDoubled = 4HX by N, making exactly (10 tricks). Vul: 790. NS declared, so N/S score is +790.
+      expect(DealOutcome.nsScore(DealOutcome.played(dcDoubled, 10), 'NS')).toBe(790)
+      expect(DealOutcome.ewScore(DealOutcome.played(dcDoubled, 10), 'NS')).toBe(-790)
+    })
+
+    it('played: uses the declarer\'s own vulnerability, not a blanket flag', () => {
+      // dc = 3NT by W (EW pair): Vulnerable 'EW' makes W vul (600), 'NS' does not (400).
+      expect(DealOutcome.nsScore(DealOutcome.played(dc, 9), 'EW')).toBe(-600)
+      expect(DealOutcome.nsScore(DealOutcome.played(dc, 9), 'NS')).toBe(-400)
+    })
+
+    it('passedOut always scores 0', () => {
+      expect(DealOutcome.nsScore(DealOutcome.passedOut, 'All')).toBe(0)
+      expect(DealOutcome.ewScore(DealOutcome.passedOut, 'None')).toBe(0)
+    })
+
+    it('scoreOnly returns its stored score regardless of vulnerability', () => {
+      expect(DealOutcome.nsScore(DealOutcome.scoreOnly(-140), 'All')).toBe(-140)
+      expect(DealOutcome.ewScore(DealOutcome.scoreOnly(-140), 'All')).toBe(140)
+    })
+
+    it('average/averagePlus/averageMinus/noScore have no score', () => {
+      expect(DealOutcome.nsScore(DealOutcome.average, 'None')).toBeUndefined()
+      expect(DealOutcome.nsScore(DealOutcome.averagePlus, 'None')).toBeUndefined()
+      expect(DealOutcome.nsScore(DealOutcome.averageMinus, 'None')).toBeUndefined()
+      expect(DealOutcome.nsScore(DealOutcome.noScore, 'None')).toBeUndefined()
+      expect(DealOutcome.ewScore(DealOutcome.average, 'None')).toBeUndefined()
+    })
+  })
+
   it('pbn round-trips', () => {
     const outcomes = [
       DealOutcome.played(dc, 9),
