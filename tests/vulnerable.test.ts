@@ -48,4 +48,56 @@ describe('Vulnerable', () => {
     expect(Vulnerable.isVulDirection('All', 'W')).toBe(true)
     expect(Vulnerable.isVulDirection('None', 'N')).toBe(false)
   })
+
+  it('toPBN returns the canonical PBN string', () => {
+    expect(Vulnerable.toPBN('None')).toBe('None')
+    expect(Vulnerable.toPBN('NS')).toBe('NS')
+    expect(Vulnerable.toPBN('EW')).toBe('EW')
+    expect(Vulnerable.toPBN('All')).toBe('All')
+  })
+
+  it('fromPBN parses canonical strings', () => {
+    expect(Vulnerable.fromPBN('None')).toBe('None')
+    expect(Vulnerable.fromPBN('NS')).toBe('NS')
+    expect(Vulnerable.fromPBN('EW')).toBe('EW')
+    expect(Vulnerable.fromPBN('All')).toBe('All')
+  })
+
+  it('fromPBN accepts synonyms and is case-insensitive', () => {
+    expect(Vulnerable.fromPBN('LOVE')).toBe('None')
+    expect(Vulnerable.fromPBN('-')).toBe('None')
+    expect(Vulnerable.fromPBN('BOTH')).toBe('All')
+    expect(Vulnerable.fromPBN('none')).toBe('None')
+    expect(Vulnerable.fromPBN('ns')).toBe('NS')
+    expect(Vulnerable.fromPBN('ew')).toBe('EW')
+    expect(Vulnerable.fromPBN('all')).toBe('All')
+    expect(Vulnerable.fromPBN('love')).toBe('None')
+    expect(Vulnerable.fromPBN('both')).toBe('All')
+  })
+
+  it('fromPBN returns undefined for invalid input', () => {
+    expect(Vulnerable.fromPBN('')).toBeUndefined()
+    expect(Vulnerable.fromPBN('garbage')).toBeUndefined()
+  })
+
+  it('pbn round-trips for canonical strings', () => {
+    for (const v of Vulnerable.all) {
+      expect(Vulnerable.fromPBN(Vulnerable.toPBN(v))).toBe(v)
+    }
+  })
+
+  it('rotated: None and All are unaffected at any seat count', () => {
+    expect(Vulnerable.rotated('None', 1)).toBe('None')
+    expect(Vulnerable.rotated('None', 2)).toBe('None')
+    expect(Vulnerable.rotated('All', 1)).toBe('All')
+    expect(Vulnerable.rotated('All', 3)).toBe('All')
+  })
+
+  it('rotated: NS/EW swap on odd seats, unchanged on even', () => {
+    expect(Vulnerable.rotated('NS', 1)).toBe('EW')
+    expect(Vulnerable.rotated('EW', 1)).toBe('NS')
+    expect(Vulnerable.rotated('NS', 3)).toBe('EW')
+    expect(Vulnerable.rotated('NS', 2)).toBe('NS')
+    expect(Vulnerable.rotated('EW', 4)).toBe('EW')
+  })
 })
