@@ -240,9 +240,41 @@ implementation detail without changing any public API, so this isn't a foreclosi
   *error-strategy* open questions in that section are still live and unaffected by this change;
   they'll need to be answered in terms of "find/parse the right section(s)" rather than "map
   lookup" once accessors are actually built.
-- **Not started yet:** parsing a section's first line into tag name/value, Tags/SimpleTag/ComplexTag
+- **`PBNSectionCodable<T, E = undefined>`** (`src/pbn/pbnSectionCodable.ts`, new 2026-08) — the
+  complex-tag analog of `PBNCodable`, for types whose PBN representation spans multiple lines
+  (Auction, and later Play) rather than a single string. `toPBNSection(value): string[]` /
+  `fromPBNSection(lines: readonly string[]): T | E`; element 0 of the array is always the tag pair
+  line. Deliberately placed in `src/pbn/` rather than alongside `PBNCodable` at top-level — unlike
+  `PBNCodable` (used by core value types regardless of the PBN module), this only makes sense in
+  terms of the `PBNSection` concept, and `auction.ts` already has to reach into `src/pbn/` for
+  `formatTagLine` regardless. **`toPBNSection`/`fromPBNSection` accept/return plain (not readonly)
+  vs. readonly arrays asymmetrically on purpose**: `toPBNSection`'s output must be a plain `string[]`
+  so `game.setSection(X.toPBNSection(v))` type-checks against `setSection`'s existing `string[]`
+  param; `fromPBNSection`'s input must accept `readonly string[]` so `X.fromPBNSection(section.lines)`
+  type-checks against `PBNSection.lines`'s readonly type.
+  **`Auction.toPBNSection`** (`src/auction.ts`) — tag line is `[Auction "<dealer>"]` via
+  `formatTagLine`; body groups calls 4-per-line (matching Swift/standard PBN auction formatting);
+  a call's note gets an inline `=N=` marker plus a trailing `[Note "N:text"]` line per note, in the
+  order encountered. **Note numbers are recomputed fresh at serialize time** (a local counter), NOT
+  read from `AuctionCall.noteNumber` — that stored field is assigned incrementally as calls are
+  added and isn't guaranteed to match a fresh left-to-right scan of whatever calls currently
+  remain; Swift's own serialization also recomputes fresh rather than using any stored number.
+  **`Auction.fromPBNSection`** (`src/auction.ts`, done 2026-08 right after `toPBNSection` — no gap
+  this time, so `Auction satisfies PBNSectionCodable<Auction>` is in place) — returns `Auction |
+  undefined` (the interface's default `E`), NOT a new `AuctionError` kind: any failure (bad tag
+  line/name, unrecognized dealer, unparseable call token, a `=N=` marker with no matching `[Note]`
+  line, or an illegal call sequence — caught from `makingCall`'s own thrown `AuctionError`) folds to
+  `undefined`, matching how nearly every other `fromPBN`-style function in this codebase behaves.
+  Algorithm mirrors Swift's two-phase approach: (1) split remaining lines into `[Note "N:text"]`
+  lines (build a `"=N="` → text map) vs. body-text lines; (2) tokenize the joined body text on
+  whitespace, folding each `"=N="` marker into the *preceding* token (not looked ahead) since that's
+  the token it annotates; (3) replay each token through `make`/`makingCall`, expanding the `"AP"`
+  ("all pass") shorthand into repeated `Pass` calls until `isComplete`. Round-trips
+  `fromPBNSection(toPBNSection(a))` back to the original `a`, verified in tests for empty, plain,
+  and doubled/redoubled-with-notes auctions.
+- **Not started yet:** `AnnotatedPlay`'s `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag
   shape, the actual parser (Swift's `Parse.swift`), PBNError equivalent,
-  Note/ContractTagValue/OptimumScoreTagValue/AnnotatedPlay value types.
+  Note/ContractTagValue/OptimumScoreTagValue value types.
 **How to apply:** Don't jump ahead and implement PBNGame's real storage or the parser unless asked
 — Ralph is deliberately sequencing this "a step at a time." Ask what's next rather than assuming
 the natural next chunk (e.g. don't assume "now do the parser" just because it seems logical).

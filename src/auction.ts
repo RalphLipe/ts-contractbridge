@@ -3,6 +3,8 @@ import { Call } from './call.js'
 import { Contract, Risk } from './contract.js'
 import { DeclaredContract } from './declaredContract.js'
 import { Direction } from './direction.js'
+import { formatTagLine, parseTagLine } from './pbn/tagLine.js'
+import type { PBNSectionCodable } from './pbn/pbnSectionCodable.js'
 
 export class AuctionError extends Error {
   constructor(
@@ -142,7 +144,101 @@ const rotated = (a: Auction, seats: number): Auction => ({
   calls: a.calls.map(ac => ({ ...ac, position: Direction.rotated(ac.position, seats) }))
 })
 
+// Encodes the whole [Auction "D"] section: tag line, then body lines of up to 4 calls each
+// (blank calls array produces no body at all), followed by one [Note "N:text"] line per note.
+// Note numbers are computed fresh here (the order notes are encountered during this pass), not
+// from AuctionCall.noteNumber — that field can develop gaps if an earlier note's call is later
+// removed via undoingLast, and Swift's own serialization recomputes fresh too.
+const toPBNSection = (a: Auction): string[] => {
+  const lines: string[] = [formatTagLine({ name: 'Auction', value: Direction.toPBN(a.dealer) })]
+  const notes: string[] = []
+  let currentLine = ''
+  a.calls.forEach((ac, index) => {
+    let token = Call.toPBN(ac.call)
+    if (ac.note !== undefined) {
+      notes.push(ac.note)
+      token += ` =${notes.length}=`
+    }
+    currentLine += currentLine === '' ? token : ` ${token}`
+    if ((index + 1) % 4 === 0 || index === a.calls.length - 1) {
+      lines.push(currentLine)
+      currentLine = ''
+    }
+  })
+  notes.forEach((note, i) => {
+    lines.push(formatTagLine({ name: 'Note', value: `${i + 1}:${note}` }))
+  })
+  return lines
+}
+
+type RawAnnotatedToken = { value: string; note?: string }
+
+// Decodes an [Auction "D"] section built by toPBNSection (or a real PBN file's equivalent).
+// Returns undefined for anything malformed: bad tag line, unrecognized dealer, an unparseable
+// call token, a note marker with no matching [Note] line, or an illegal call sequence (a caught
+// AuctionError from makingCall) — matching this codebase's usual "T | undefined" convention
+// rather than inventing a new AuctionError kind just for "unparseable input."
+const fromPBNSection = (lines: readonly string[]): Auction | undefined => {
+  const first = lines[0]
+  if (first === undefined) return undefined
+  const tag = parseTagLine(first)
+  if (tag === undefined || tag.name.toLowerCase() !== 'auction') return undefined
+  const dealer = Direction.fromPBN(tag.value)
+  if (dealer === undefined) return undefined
+
+  // Separate trailing [Note "N:text"] lines (keyed by their "=N=" marker) from body text.
+  const notesByKey = new Map<string, string>()
+  const bodyLines: string[] = []
+  for (const line of lines.slice(1)) {
+    const lineTag = parseTagLine(line)
+    if (lineTag !== undefined && lineTag.name.toLowerCase() === 'note') {
+      const colonIndex = lineTag.value.indexOf(':')
+      if (colonIndex === -1) return undefined
+      const id = lineTag.value.slice(0, colonIndex).trim()
+      notesByKey.set(`=${id}=`, lineTag.value.slice(colonIndex + 1).trim())
+    } else {
+      bodyLines.push(line)
+    }
+  }
+
+  // Fold "=N=" note markers into the token they follow, per the PBN convention — they don't
+  // create tokens of their own.
+  const rawTokens = bodyLines.join(' ').split(/\s+/).filter(t => t.length > 0)
+  const tokens: RawAnnotatedToken[] = []
+  for (const raw of rawTokens) {
+    if (/^=\d+=$/.test(raw)) {
+      const note = notesByKey.get(raw)
+      const last = tokens[tokens.length - 1]
+      if (note === undefined || last === undefined) return undefined
+      last.note = note
+    } else {
+      tokens.push({ value: raw })
+    }
+  }
+
+  let auction = make(dealer)
+  try {
+    for (const token of tokens) {
+      if (token.value === 'AP') {
+        while (!isComplete(auction)) {
+          auction = makingCall(auction, 'Pass')
+        }
+        continue
+      }
+      const call = Call.fromPBN(token.value)
+      if (call === undefined) return undefined
+      auction = makingCall(auction, call, token.note)
+    }
+  } catch {
+    return undefined
+  }
+
+  return auction
+}
+
 export const Auction = {
   make, isEmpty, isComplete, nextToAct, hasNotes, declaredContract,
-  isPassedOut, makingCall, undoingLast, rotated,
+  isPassedOut, makingCall, undoingLast, rotated, toPBNSection, fromPBNSection,
 }
+
+Auction satisfies PBNSectionCodable<Auction>

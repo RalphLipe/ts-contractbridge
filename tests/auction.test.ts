@@ -190,4 +190,164 @@ describe('Auction', () => {
     a = Auction.makingCall(a, '1S')
     expect(Auction.hasNotes(a)).toBe(false)
   })
+
+  describe('toPBNSection', () => {
+    it('an empty auction is just the tag line, no body', () => {
+      const a = Auction.make('N')
+      expect(Auction.toPBNSection(a)).toEqual(['[Auction "N"]'])
+    })
+
+    it('up to 4 calls fit on one body line', () => {
+      let a = Auction.make('N')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, 'Pass')
+      expect(Auction.toPBNSection(a)).toEqual(['[Auction "N"]', 'Pass Pass Pass'])
+    })
+
+    it('exactly 4 calls stay on one line', () => {
+      let a = Auction.make('N')
+      a = Auction.makingCall(a, '1S')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, 'Pass')
+      expect(Auction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass Pass Pass'])
+    })
+
+    it('breaks to a new line after every 4th call', () => {
+      let a = Auction.make('N')
+      for (const call of ['1S', 'Pass', '2S', 'Pass', 'Pass'] as const) {
+        a = Auction.makingCall(a, call)
+      }
+      expect(Auction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', 'Pass'])
+    })
+
+    it('an exact multiple of 4 calls does not add a trailing empty line', () => {
+      // Constructed directly rather than via makingCall — this many calls without ending the
+      // auction isn't a legal sequence, but toPBNSection only cares about the calls array shape.
+      const calls = ['1S', 'Pass', '2S', 'Pass', '3S', 'Pass', '4S', 'Pass'] as const
+      const a = {
+        dealer: 'N' as const,
+        calls: calls.map((call, i) => ({ id: i, position: 'N' as const, call })),
+      }
+      expect(Auction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', '3S Pass 4S Pass'])
+    })
+
+    it('notes get sequential =N= markers inline and trailing [Note] lines', () => {
+      let a = Auction.make('N')
+      a = Auction.makingCall(a, '1S', 'natural')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, '2S', 'raise')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, 'Pass')
+      a = Auction.makingCall(a, 'Pass')
+      expect(Auction.toPBNSection(a)).toEqual([
+        '[Auction "N"]',
+        '1S =1= Pass 2S =2= Pass',
+        'Pass Pass',
+        '[Note "1:natural"]',
+        '[Note "2:raise"]',
+      ])
+    })
+
+    it('recomputes note numbers fresh, ignoring a mismatched stored noteNumber', () => {
+      // Constructed directly (not via makingCall) with deliberately wrong stored noteNumbers, to
+      // prove toPBNSection recomputes from scratch rather than trusting the stored field.
+      const a = {
+        dealer: 'N' as const,
+        calls: [
+          { id: 0, position: 'N' as const, call: '1S' as const, note: 'first note', noteNumber: 99 },
+          { id: 1, position: 'E' as const, call: 'Pass' as const, note: 'second note', noteNumber: 1 },
+        ],
+      }
+      expect(Auction.toPBNSection(a)).toEqual([
+        '[Auction "N"]',
+        '1S =1= Pass =2=',
+        '[Note "1:first note"]',
+        '[Note "2:second note"]',
+      ])
+    })
+  })
+
+  describe('fromPBNSection', () => {
+    it('parses an empty auction', () => {
+      const result = Auction.fromPBNSection(['[Auction "N"]'])
+      expect(result).toEqual(Auction.make('N'))
+    })
+
+    it('parses a simple sequence of calls', () => {
+      let expected = Auction.make('N')
+      expected = Auction.makingCall(expected, '1S')
+      expected = Auction.makingCall(expected, 'Pass')
+      expected = Auction.makingCall(expected, 'Pass')
+      expected = Auction.makingCall(expected, 'Pass')
+      const result = Auction.fromPBNSection(['[Auction "N"]', '1S Pass Pass Pass'])
+      expect(result).toEqual(expected)
+    })
+
+    it('parses notes and reassociates them with the correct call', () => {
+      let expected = Auction.make('N')
+      expected = Auction.makingCall(expected, '1S', 'natural')
+      expected = Auction.makingCall(expected, 'Pass')
+      expected = Auction.makingCall(expected, '2S', 'raise')
+      expected = Auction.makingCall(expected, 'Pass')
+      expected = Auction.makingCall(expected, 'Pass')
+      expected = Auction.makingCall(expected, 'Pass')
+      const result = Auction.fromPBNSection([
+        '[Auction "N"]',
+        '1S =1= Pass 2S =2= Pass',
+        'Pass Pass',
+        '[Note "1:natural"]',
+        '[Note "2:raise"]',
+      ])
+      expect(result).toEqual(expected)
+    })
+
+    it('expands "AP" (all pass) to enough passes to complete the auction', () => {
+      const result = Auction.fromPBNSection(['[Auction "N"]', '1S AP'])
+      expect(result?.calls.map(ac => ac.call)).toEqual(['1S', 'Pass', 'Pass', 'Pass'])
+    })
+
+    it('round-trips through toPBNSection for a variety of auctions', () => {
+      let passedOut = Auction.make('N')
+      for (let i = 0; i < 4; i++) passedOut = Auction.makingCall(passedOut, 'Pass')
+
+      let withNotes = Auction.make('E')
+      withNotes = Auction.makingCall(withNotes, '1NT', 'strong notrump')  // E
+      withNotes = Auction.makingCall(withNotes, 'X', 'penalty')           // S doubles
+      withNotes = Auction.makingCall(withNotes, 'XX')                    // W redoubles (EW pair)
+      withNotes = Auction.makingCall(withNotes, 'Pass')                  // N
+      withNotes = Auction.makingCall(withNotes, 'Pass')                  // E
+      withNotes = Auction.makingCall(withNotes, 'Pass')                  // S
+
+      for (const a of [Auction.make('S'), passedOut, withNotes]) {
+        expect(Auction.fromPBNSection(Auction.toPBNSection(a))).toEqual(a)
+      }
+    })
+
+    it('is undefined for an empty lines array', () => {
+      expect(Auction.fromPBNSection([])).toBeUndefined()
+    })
+
+    it('is undefined for a non-Auction tag', () => {
+      expect(Auction.fromPBNSection(['[Board "1"]'])).toBeUndefined()
+    })
+
+    it('is undefined for an invalid dealer', () => {
+      expect(Auction.fromPBNSection(['[Auction "X"]'])).toBeUndefined()
+    })
+
+    it('is undefined for an unparseable call token', () => {
+      expect(Auction.fromPBNSection(['[Auction "N"]', 'garbage'])).toBeUndefined()
+    })
+
+    it('is undefined for a note marker with no matching [Note] line', () => {
+      expect(Auction.fromPBNSection(['[Auction "N"]', '1S =1= Pass Pass Pass'])).toBeUndefined()
+    })
+
+    it('is undefined for an illegal call sequence', () => {
+      // 2S is not a sufficient bid over 3NT
+      expect(Auction.fromPBNSection(['[Auction "N"]', '3NT 2S'])).toBeUndefined()
+    })
+  })
 })
