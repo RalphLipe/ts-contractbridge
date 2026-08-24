@@ -9,8 +9,11 @@ import type { TagPair } from './tagLine.js'
 //
 // Stored here purely as raw lines — the tag pair on the first line (if present) isn't parsed out
 // yet; that happens later, one step at a time.
+//
+// A section's lines are read-only: the only way to change a section's content is to replace it
+// wholesale via PBNGame.setSection.
 export class PBNSection {
-  lines: string[]
+  readonly lines: readonly string[]
 
   constructor(lines: string[] = []) {
     this.lines = lines

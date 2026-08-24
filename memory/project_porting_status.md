@@ -129,10 +129,27 @@ implementation detail without changing any public API, so this isn't a foreclosi
   string[]` (lines starting with `%`, typically in the file header before any game; PBN's spec
   doesn't strictly require that, but header-level escaped lines are treated as a special case here,
   unrelated to any single PBNGame). No methods yet — being built incrementally.
-- **`PBNGame`** (`src/pbn/pbnGame.ts`) — has `sections: PBNSection[]` and `getTagValue(tagName):
-  string | undefined` (linear scan over sections, matching `tagPair.name` case-insensitively,
-  returning the first match's value). No caching — recomputed from `sections` on every call.
-- **`PBNSection`** (`src/pbn/pbnSection.ts`, new 2026-08) — `lines: string[]`, raw/unparsed. Concept
+- **`PBNGame`** (`src/pbn/pbnGame.ts`):
+  - `sections: readonly PBNSection[]` — a read-only view over a private backing array. Sections
+    can only be added/replaced through `setSection`, never spliced in directly, matching
+    `PBNSection.lines` (also read-only) — the only way to change a section's content anywhere in
+    this module is wholesale replacement, not in-place mutation.
+  - `getTagValue(tagName): string | undefined` — linear scan over sections, matching
+    `tagPair.name` case-insensitively, returning the first match's value. No caching — recomputed
+    from `sections` on every call.
+  - `setSection(lines: string[]): void` — builds a `PBNSection` from `lines`, then finds an
+    existing section whose `tagPair?.name` matches the new one's (case-insensitive; `undefined ===
+    undefined` also matches, so a "global"/untagged section replaces the existing untagged section
+    rather than adding a second one) and overwrites it in place; adds a new section if none
+    matches. **Design call, not explicitly specified by Ralph — flag if wrong:** the target section
+    is identified by parsing the tag name out of the new `lines` themselves (upsert semantics),
+    not by index or an explicit separate tag-name parameter.
+  - `deleteSection(tagName: string): void` — removes the section with a matching tag name
+    (case-insensitive), no-op if none matches. Only targets named sections — there's no way to
+    pass "no tag" through a `string` parameter, so the global/untagged section can't be deleted
+    this way.
+- **`PBNSection`** (`src/pbn/pbnSection.ts`, new 2026-08) — `lines: readonly string[]`, raw/unparsed
+  and read-only (mutate only by replacing the whole section via `PBNGame.setSection`). Concept
   introduced by Ralph: per the PBN spec, a game is really a sequence of "sections," each starting
   with a tag pair (e.g. `[Declarer "N"]`) and optionally followed by body lines (auction/play
   tokens), comments, notes (their own tag lines, but considered part of the section they follow),

@@ -12,10 +12,11 @@ describe('PBNSection', () => {
     expect(section.lines).toEqual(['[Declarer "N"]'])
   })
 
-  it('lines are mutable', () => {
+  it('lines are read-only (compile-time check)', () => {
     const section = new PBNSection(['[Auction "N"]'])
+    // @ts-expect-error - lines is readonly; the only way to change a section's content is
+    // PBNGame.setSection, which replaces it wholesale.
     section.lines.push('P P P P')
-    expect(section.lines).toEqual(['[Auction "N"]', 'P P P P'])
   })
 
   // Exhaustive tag-line parsing edge cases live in tagLine.test.ts. These just confirm PBNSection
