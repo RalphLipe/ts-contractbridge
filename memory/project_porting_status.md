@@ -83,15 +83,91 @@ interface, but does not reject a reference of a type that's merely assignable/wi
 **How to apply:** Every future port with both a "to PBN" and "from PBN" function should follow this
 — add the `satisfies PBNCodable<X>` line, don't skip it.
 
-## Skipped — intentionally not porting
+## Skipped permanently — do not suggest porting again
 - **ScoreValidator** — precomputes every achievable N/S score (all vulnerabilities × contracts ×
   declarers × tricks) into a set, to answer "could this score possibly be valid?". Ralph decided
-  2026-08 to skip this permanently — not a "do later," don't suggest porting it again.
+  2026-08 to skip this permanently.
 
-## Remaining types (priority order — core domain first)
-1. RankSet — bitset for rank subsets (bridge analysis)
-2. CardSet / CardArray extensions — utility functions for card collections
-3. PBN module — full PBN parse/encode (many files, includes Game/Document — see mutability note below)
+## Skipped for now — conditional, may revisit if actually needed
+- **RankSet** — bitset for rank subsets. Confirmed 2026-08 it's used only by `CardSet.swift` and
+  the `Analysis/` module (SuitLayout, LeadGenerator, RankBrackets, LeadPlan) — not by PBN reading/
+  writing. Ralph's current goal is PBN support, not analysis, so this is skipped *for now*. Unlike
+  ScoreValidator, this is NOT a permanent no — port it if something later actually needs it (most
+  likely: the Analysis module, or if CardSet turns out to need it — see note below). Don't
+  proactively suggest porting it; wait until something depends on it.
+
+## Current goal (2026-08)
+Ralph's stated priority: get PBN reading/writing working. This reprioritizes the porting order —
+PBN module (Game/Document, tags, parse/encode) matters more right now than RankSet/CardSet/Analysis.
+**Watch for:** Swift's `CardSet.swift` uses `RankSet` internally. If PBN work ends up needing
+CardSet (e.g. for hand manipulation beyond the `Set<Card>` the current `Deal`/`Hands` types already
+use), check whether that dependency actually requires porting RankSet too, or whether it can be
+avoided/simplified in the TS port.
+
+## PBN module — in progress (started 2026-08)
+Building this one piece at a time per Ralph's request, not all at once like earlier types. New
+subdirectory `src/pbn/` (mirrors Swift's own `PBN/` folder — a deliberate deviation from this repo's
+previous flat `src/` layout, since this module will grow to many files) and `tests/pbn/` to match.
+Swift's `PBN.Document`/`PBN.Game` (nested under an enum used purely as a namespace) become top-level
+`PBNDocument`/`PBNGame` classes — prefixed (not bare `Document`/`Game`) both to avoid colliding with
+the DOM's global `Document` type and to stay consistent with this codebase's existing `PBNCodable`
+acronym-casing convention.
+- **`PBNDocument`** (`src/pbn/pbnDocument.ts`) — done. Real mutable class (per the mutability
+  principle below), currently just two public fields: `games: PBNGame[]` and `escapedText:
+  string[]` (lines starting with `%`, typically in the file header before any game; PBN's spec
+  doesn't strictly require that, but header-level escaped lines are treated as a special case here,
+  unrelated to any single PBNGame). No methods yet — being built incrementally.
+- **`PBNGame`** (`src/pbn/pbnGame.ts`) — has `sections: PBNSection[]`, nothing else yet.
+- **`PBNSection`** (`src/pbn/pbnSection.ts`, new 2026-08) — `lines: string[]`, raw/unparsed. Concept
+  introduced by Ralph: per the PBN spec, a game is really a sequence of "sections," each starting
+  with a tag pair (e.g. `[Declarer "N"]`) and optionally followed by body lines (auction/play
+  tokens), comments, notes (their own tag lines, but considered part of the section they follow),
+  and even stray `%`-escaped lines (allowed but Ralph's never seen them in practice). A section
+  with no tag line at all holds comments before a game's first tag — those apply to the whole game,
+  associated with a "null" tag.
+  **`tagName`/`tagValue` getters added 2026-08** — parse the first line as `[TagName "TagValue"]`
+  (split on the *first* space only, so quoted values may contain spaces, e.g. `[Event "World
+  Championship"]`; value must be double-quoted). Both are `undefined` together whenever the first
+  line isn't a valid tag pair (no lines at all, a comment-only "global" section, or a malformed
+  line) — matches this codebase's established `T | undefined` convention rather than throwing,
+  since there's no PBNError equivalent yet (still an open question, see below). Only the first line
+  is ever consulted; body lines are ignored for this purpose. Implemented as a private
+  `parseFirstLine()` returning `{name, value} | undefined` so the two getters can never disagree
+  about whether a tag is present (mirrors Swift's `parseTagNameAndValue`, which returns both parts
+  together or throws — never one without the other).
+  **Extracted 2026-08 to a standalone `parseTagLine(s: string)` in `src/pbn/tagLine.ts`** (returns
+  the `ParsedTag = {name, value}` type, also exported — renamed from the initial `TagLine`, which
+  Ralph pointed out doesn't describe a line at all; avoided `TagPair` too since Swift already uses
+  that exact term for something different — `Tag.tagPair(value) -> String` serializes TO the full
+  `"[Name \"Value\"]\n"` line, the opposite direction from what this type represents) since Ralph
+  anticipates needing this same `[TagName "TagValue"]` parse in multiple places (e.g. Notes are
+  their own tag lines within a section's body). `PBNSection.parseFirstLine()` now just calls
+  `parseTagLine(this.lines[0])`. Exhaustive edge-case tests live on `parseTagLine` itself
+  (`tests/pbn/tagLine.test.ts`); `PBNSection`'s own tests were trimmed to just confirm the wiring
+  (first-line-only, undefined for the global section) rather than duplicating every edge case.
+  **`formatTagLine(tag: ParsedTag): string` added 2026-08** — the inverse direction, in the same
+  file (renamed from `parseTagLine.ts` to `tagLine.ts` once it held both directions, matching how
+  e.g. `contract.ts` holds both `toPBN`/`fromPBN` rather than being split by direction). Produces
+  `[Name "Value"]` with no trailing newline (joining lines is left to whatever assembles a full
+  section/document — a deliberate difference from Swift's `tagPair`, which bakes in `\n`). Verified
+  to round-trip with `parseTagLine`.
+  **This supersedes the flat `Map<string,string>`-keyed-by-tag-name idea in the "PBN.Game storage
+  design" section below** for how data is actually stored — `PBNGame` now holds an ordered
+  `PBNSection[]`, not a map. The *typed-accessor*, *validation*, *reconciliation*, and
+  *error-strategy* open questions in that section are still live and unaffected by this change;
+  they'll need to be answered in terms of "find/parse the right section(s)" rather than "map
+  lookup" once accessors are actually built.
+- **Not started yet:** parsing a section's first line into tag name/value, Tags/SimpleTag/ComplexTag
+  shape, the actual parser (Swift's `Parse.swift`), PBNError equivalent,
+  Note/ContractTagValue/OptimumScoreTagValue/AnnotatedPlay value types.
+**How to apply:** Don't jump ahead and implement PBNGame's real storage or the parser unless asked
+— Ralph is deliberately sequencing this "a step at a time." Ask what's next rather than assuming
+the natural next chunk (e.g. don't assume "now do the parser" just because it seems logical).
+
+## Remaining types (priority order — reflects current PBN-first goal)
+1. PBN module — full PBN parse/encode (in progress, see section above)
+2. CardSet / CardArray extensions — utility functions for card collections (only if PBN work needs them)
+3. RankSet — see conditional-skip note above
 4. Analysis module — DoubleDummySolver, LeadGenerator, etc.
 
 ## Mutability: values vs. documents
@@ -105,10 +181,59 @@ an Auction, comments, tags, etc.), which is a different kind of thing than a der
 reflection he agrees atomic values (rotated/derived facts about a board) should stay immutable like
 the current pattern, but a Game/Document users actively edit should be a normal mutable object, not
 force-fit into copy-and-return-a-new-instance style.
-**How to apply:** When porting the PBN module, don't default to the immutable type+const-object
-pattern for Game/Document — ask Ralph to confirm the class design (likely a real `class` with
-mutable fields/methods) before implementing. Everything else in the PBN module that's a plain value
-(tags, individual PBN records) can probably still follow the immutable pattern; check per-type.
+**Confirmed 2026-08 (resolves the open question above):** mutable things are REAL TS `class`es with
+instance methods — `game.setDealer(d)`, `game.getDealOutcome()`, not free functions over a mutable
+object (`Game.setDealer(game, d)`). This is a general principle, not just for Game/Document: Ralph
+floated `AuctionBuilder` as another example — the existing immutable `Auction` const-object stays as
+the value/snapshot type; a *builder* class would be the live/in-progress counterpart, same
+relationship as Game/Document to their own data. Not requested/built yet, just the pattern to reuse
+whenever something needs "construct/edit over time" rather than "immutable derived value."
+**How to apply:** Game/Document are real classes. Everything else in the PBN module that's a plain
+value (tags, individual PBN records like Note/ContractTagValue/OptimumScoreTagValue) still follows
+the immutable type+const-object pattern; check per-type, don't assume "in the PBN module" alone
+means "gets a class."
+
+## PBN.Game storage design (2026-08, agreed before implementation)
+- **`entries` is a uniform `Map<string, string>`** — every tag (known or unknown) stores its raw PBN
+  string value, not a typed value. Avoids Swift's `[String: any Sendable]` type-erasure/cast problem
+  entirely; TS has no clean equivalent to reach for instead.
+- **Parsing preserves the original substring on success**, not a reparsed/recanonicalized one — so
+  loading a file and saving it back unchanged reproduces it byte-for-byte (matters for e.g. Date,
+  which has 3 valid input formats but only one canonical output format). Only a typed setter
+  (`game.setDeal(deal)`) synthesizes a fresh string, via `toPBN`.
+- **Typed accessor methods per known tag** (`getDeal`/`setDeal`, `getDealer`/`setDealer`, etc.)
+  convert to/from the raw string via each type's existing `toPBN`/`fromPBN`. Some have side effects
+  on other tags — e.g. `setDealer` also rewrites the `d:` prefix embedded in the `Deal` tag's string
+  (redundant data PBN itself carries). `getDealOutcome`/`setDealOutcome` compose from three tags at
+  once (Contract, Declarer, Result) — **`setDealOutcome` is new, Swift only ever had a read-only
+  `dealOutcome` getter; still need to decide what it does for DealOutcome kinds that don't map to
+  Contract/Declarer/Result at all (scoreOnly, average, averagePlus, averageMinus, noScore) — not yet
+  resolved, ask Ralph before implementing `setDealOutcome`.**
+- **Complex tags (Auction, Play) store their whole multi-line block as one string blob**, same
+  uniform `Map<string,string>` as simple tags — no separate storage mechanism. `Auction.toComplexPBN`/
+  `fromComplexPBN` (naming TBD) own serializing/parsing the entire `[Auction "..."]` block including
+  body tokens AND the `=N=`-note-numbering / `[Note "N:text"]` lines, using `AuctionCall.note`/
+  `noteNumber` which already exist. This moves note-handling OUT of the top-level parser (where
+  Swift's `Parser` class currently owns it, entangled with generic complex-tag-body collection) and
+  INTO Auction/AnnotatedPlay's own encode/decode — a deliberate improvement on the Swift structure,
+  not just a straight port.
+- **Comments** stay a parallel `Map<string, string[]>` keyed by tag name, independent of the
+  entries-storage decision above — same shape as Swift's `comments: [String: [String]]`.
+- **Still open, not yet decided:**
+  1. Does the generic/untyped string setter (for setting a tag by name, not through a typed method)
+     validate known tags the way Swift's `setValue(_:for: tagName)` does (looks up known tags, runs
+     them through `parse(from:)`, throws on invalid) — or does the raw-string design let it store
+     anything? Recommend carrying Swift's validate-known-tags behavior over.
+  2. Proactive dual-write (setDealer syncing Deal's embedded dealer too) does NOT eliminate needing
+     a `reconcileTags`-equivalent step when parsing arbitrary PBN text from real files, which can
+     arrive with Dealer/Deal (or Contract/Declarer/Result) already disagreeing — Swift's
+     `reconcileTags()` exists for exactly that reason and something like it is still needed at parse
+     time even with proactive sync on the setters.
+  3. Overall error/validation strategy for the parser is still unresolved — Swift's `ValidationLevel`
+     (strict/bestEffort/ignoreErrors) has no TS analog yet; every other `fromPBN` in this codebase
+     returns `T | undefined` (single best-effort value, no error collection), but a whole-document
+     parser that wants "keep going and report what went wrong per-line" needs a different shape.
+     Don't default to `T | undefined` here without deciding this explicitly first.
 
 **Why (porting order):** User is porting one type at a time; Swift project is the authoritative reference.
 **How to apply (porting order):** When user asks to port the next type, read the corresponding Swift file first, then implement using the existing TS type-alias+const-object pattern (except Game/Document, see above).
