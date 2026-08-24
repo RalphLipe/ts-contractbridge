@@ -1,4 +1,6 @@
 import { PBNSection } from './pbnSection.js'
+import { formatTagLine } from './tagLine.js'
+import type { TagPair } from './tagLine.js'
 
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
@@ -40,6 +42,12 @@ export class PBNGame {
     } else {
       this._sections[index] = newSection
     }
+  }
+
+  // Convenience for the common case of a single-line (simple-tag) section: formats the pair as a
+  // tag line and replaces/adds that section via setSection.
+  setTag(tag: TagPair): void {
+    this.setSection([formatTagLine(tag)])
   }
 
   // Removes the section with a matching tag name (case-insensitive), if one exists. A no-op

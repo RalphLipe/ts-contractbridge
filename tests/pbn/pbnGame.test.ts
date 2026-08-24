@@ -116,6 +116,30 @@ describe('PBNGame', () => {
     })
   })
 
+  describe('setTag', () => {
+    it('adds a new section formatted from the TagPair', () => {
+      const game = new PBNGame()
+      game.setTag({ name: 'Declarer', value: 'N' })
+      expect(game.sections).toHaveLength(1)
+      expect(game.sections[0]!.lines).toEqual(['[Declarer "N"]'])
+      expect(game.getTagValue('Declarer')).toBe('N')
+    })
+
+    it('replaces an existing section with the same tag name', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "N"]'])])
+      game.setTag({ name: 'Declarer', value: 'S' })
+      expect(game.sections).toHaveLength(1)
+      expect(game.getTagValue('Declarer')).toBe('S')
+    })
+
+    it('formats a value containing spaces correctly', () => {
+      const game = new PBNGame()
+      game.setTag({ name: 'Event', value: 'World Championship' })
+      expect(game.sections[0]!.lines).toEqual(['[Event "World Championship"]'])
+      expect(game.getTagValue('Event')).toBe('World Championship')
+    })
+  })
+
   describe('deleteSection', () => {
     it('removes the section with a matching tag name', () => {
       const game = new PBNGame([

@@ -144,6 +144,8 @@ implementation detail without changing any public API, so this isn't a foreclosi
     matches. **Design call, not explicitly specified by Ralph — flag if wrong:** the target section
     is identified by parsing the tag name out of the new `lines` themselves (upsert semantics),
     not by index or an explicit separate tag-name parameter.
+  - `setTag(tag: TagPair): void` — convenience for the common single-line/simple-tag case:
+    `formatTagLine(tag)` then `setSection([line])`. Just composition, no new logic of its own.
   - `deleteSection(tagName: string): void` — removes the section with a matching tag name
     (case-insensitive), no-op if none matches. Only targets named sections — there's no way to
     pass "no tag" through a `string` parameter, so the global/untagged section can't be deleted
