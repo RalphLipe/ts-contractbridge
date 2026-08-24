@@ -18,31 +18,27 @@ describe('PBNSection', () => {
     expect(section.lines).toEqual(['[Auction "N"]', 'P P P P'])
   })
 
-  // Exhaustive tag-line parsing edge cases live in parseTagLine.test.ts. These just confirm
-  // PBNSection wires tagName/tagValue up to the first line correctly.
-  describe('tagName / tagValue', () => {
+  // Exhaustive tag-line parsing edge cases live in tagLine.test.ts. These just confirm PBNSection
+  // wires tagPair up to the first line correctly.
+  describe('tagPair', () => {
     it('parses a simple tag pair from the first line', () => {
       const section = new PBNSection(['[Declarer "N"]'])
-      expect(section.tagName).toBe('Declarer')
-      expect(section.tagValue).toBe('N')
+      expect(section.tagPair).toEqual({ name: 'Declarer', value: 'N' })
     })
 
     it('only looks at the first line, ignoring any body lines that follow', () => {
       const section = new PBNSection(['[Auction "N"]', 'P P P P'])
-      expect(section.tagName).toBe('Auction')
-      expect(section.tagValue).toBe('N')
+      expect(section.tagPair).toEqual({ name: 'Auction', value: 'N' })
     })
 
     it('is undefined for the global/no-tag section (comments before the first tag)', () => {
       const section = new PBNSection(['; a comment about the whole game'])
-      expect(section.tagName).toBeUndefined()
-      expect(section.tagValue).toBeUndefined()
+      expect(section.tagPair).toBeUndefined()
     })
 
     it('is undefined for an empty section', () => {
       const section = new PBNSection()
-      expect(section.tagName).toBeUndefined()
-      expect(section.tagValue).toBeUndefined()
+      expect(section.tagPair).toBeUndefined()
     })
   })
 })

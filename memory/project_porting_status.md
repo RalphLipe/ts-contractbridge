@@ -125,32 +125,28 @@ acronym-casing convention.
   and even stray `%`-escaped lines (allowed but Ralph's never seen them in practice). A section
   with no tag line at all holds comments before a game's first tag — those apply to the whole game,
   associated with a "null" tag.
-  **`tagName`/`tagValue` getters added 2026-08** — parse the first line as `[TagName "TagValue"]`
-  (split on the *first* space only, so quoted values may contain spaces, e.g. `[Event "World
-  Championship"]`; value must be double-quoted). Both are `undefined` together whenever the first
-  line isn't a valid tag pair (no lines at all, a comment-only "global" section, or a malformed
-  line) — matches this codebase's established `T | undefined` convention rather than throwing,
-  since there's no PBNError equivalent yet (still an open question, see below). Only the first line
-  is ever consulted; body lines are ignored for this purpose. Implemented as a private
-  `parseFirstLine()` returning `{name, value} | undefined` so the two getters can never disagree
-  about whether a tag is present (mirrors Swift's `parseTagNameAndValue`, which returns both parts
-  together or throws — never one without the other).
-  **Extracted 2026-08 to a standalone `parseTagLine(s: string)` in `src/pbn/tagLine.ts`** (returns
-  the `ParsedTag = {name, value}` type, also exported — renamed from the initial `TagLine`, which
-  Ralph pointed out doesn't describe a line at all; avoided `TagPair` too since Swift already uses
-  that exact term for something different — `Tag.tagPair(value) -> String` serializes TO the full
-  `"[Name \"Value\"]\n"` line, the opposite direction from what this type represents) since Ralph
-  anticipates needing this same `[TagName "TagValue"]` parse in multiple places (e.g. Notes are
-  their own tag lines within a section's body). `PBNSection.parseFirstLine()` now just calls
-  `parseTagLine(this.lines[0])`. Exhaustive edge-case tests live on `parseTagLine` itself
-  (`tests/pbn/tagLine.test.ts`); `PBNSection`'s own tests were trimmed to just confirm the wiring
-  (first-line-only, undefined for the global section) rather than duplicating every edge case.
-  **`formatTagLine(tag: ParsedTag): string` added 2026-08** — the inverse direction, in the same
-  file (renamed from `parseTagLine.ts` to `tagLine.ts` once it held both directions, matching how
-  e.g. `contract.ts` holds both `toPBN`/`fromPBN` rather than being split by direction). Produces
-  `[Name "Value"]` with no trailing newline (joining lines is left to whatever assembles a full
-  section/document — a deliberate difference from Swift's `tagPair`, which bakes in `\n`). Verified
-  to round-trip with `parseTagLine`.
+  **`TagPair`** (`src/pbn/tagLine.ts`) — `{ name: string; value: string }`, the parsed halves of a
+  tag line. Went through two renames before landing here: started as `TagLine` (Ralph: doesn't
+  describe a line), briefly `ParsedTag`, settled on `TagPair` since that's the PBN spec's own term
+  for this — accepting the tradeoff that Swift already uses "tagPair" for something adjacent but
+  different (`Tag.tagPair(value) -> String` *serializes* to the full line, the opposite direction).
+  Ralph wants `TagPair` used as the first-class concept throughout this module, not separate
+  name/value fields — e.g. `PBNSection` exposes one `tagPair` getter, not `tagName`+`tagValue`.
+  **`parseTagLine(s: string): TagPair | undefined`** — parses `[TagName "TagValue"]` (splits on the
+  *first* space only, so quoted values may contain spaces, e.g. `[Event "World Championship"]`;
+  value must be double-quoted). Returns `undefined` for anything that isn't a valid tag pair — no
+  lines, a comment-only "global" section, a malformed line — matching this codebase's established
+  `T | undefined` convention rather than throwing (there's no PBNError equivalent yet; still open,
+  see below).
+  **`formatTagLine(tag: TagPair): string`** — the inverse, in the same file (renamed from
+  `parseTagLine.ts` to `tagLine.ts` once it held both directions, matching how e.g. `contract.ts`
+  holds both `toPBN`/`fromPBN`). Produces `[Name "Value"]` with no trailing newline — joining lines
+  is left to whatever assembles a full section/document, unlike Swift's `tagPair` which bakes one
+  in. Round-trips with `parseTagLine`; exhaustive edge-case tests live in `tests/pbn/tagLine.test.ts`.
+  **`PBNSection.tagPair: TagPair | undefined`** — a single getter parsing `this.lines[0]`, replacing
+  an earlier two-getter (`tagName`/`tagValue`) design. `PBNSection`'s own tests just confirm the
+  wiring (first-line-only, undefined for the global section) — exhaustive parsing cases stay on
+  `parseTagLine`'s own tests, not duplicated here.
   **This supersedes the flat `Map<string,string>`-keyed-by-tag-name idea in the "PBN.Game storage
   design" section below** for how data is actually stored — `PBNGame` now holds an ordered
   `PBNSection[]`, not a map. The *typed-accessor*, *validation*, *reconciliation*, and
