@@ -112,12 +112,26 @@ Swift's `PBN.Document`/`PBN.Game` (nested under an enum used purely as a namespa
 `PBNDocument`/`PBNGame` classes — prefixed (not bare `Document`/`Game`) both to avoid colliding with
 the DOM's global `Document` type and to stay consistent with this codebase's existing `PBNCodable`
 acronym-casing convention.
+
+**Governing rule, confirmed 2026-08: raw text is the single source of truth, always re-parsed —
+never cached.** `PBNSection.lines` is the only real state; `tagPair`, `PBNGame.getTagValue`, and
+every future typed accessor recompute from it on every call rather than caching a derived value.
+**Why:** `lines` is a plain mutable public array anyone can mutate directly (`section.lines.push`),
+so there's no reliable way to invalidate a cache on every mutation path anyway — caching would just
+be a second copy of the truth that can silently drift stale. Ralph judged the performance cost
+negligible (PBN documents are tiny — a handful of short lines per tag, this is document-editing
+code, not a hot loop) and correct: a caching layer could always be added later as a purely internal
+implementation detail without changing any public API, so this isn't a foreclosing decision.
+**How to apply:** every future `PBNGame`/`PBNDocument` accessor must derive its answer from
+`sections`/`lines` at call time — never store a parsed value as a field and return it.
 - **`PBNDocument`** (`src/pbn/pbnDocument.ts`) — done. Real mutable class (per the mutability
   principle below), currently just two public fields: `games: PBNGame[]` and `escapedText:
   string[]` (lines starting with `%`, typically in the file header before any game; PBN's spec
   doesn't strictly require that, but header-level escaped lines are treated as a special case here,
   unrelated to any single PBNGame). No methods yet — being built incrementally.
-- **`PBNGame`** (`src/pbn/pbnGame.ts`) — has `sections: PBNSection[]`, nothing else yet.
+- **`PBNGame`** (`src/pbn/pbnGame.ts`) — has `sections: PBNSection[]` and `getTagValue(tagName):
+  string | undefined` (linear scan over sections, matching `tagPair.name` case-insensitively,
+  returning the first match's value). No caching — recomputed from `sections` on every call.
 - **`PBNSection`** (`src/pbn/pbnSection.ts`, new 2026-08) — `lines: string[]`, raw/unparsed. Concept
   introduced by Ralph: per the PBN spec, a game is really a sequence of "sections," each starting
   with a tag pair (e.g. `[Declarer "N"]`) and optionally followed by body lines (auction/play
