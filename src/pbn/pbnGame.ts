@@ -1,6 +1,12 @@
 import { PBNSection } from './pbnSection.js'
 import { formatTagLine } from './tagLine.js'
 import type { TagPair } from './tagLine.js'
+import { Direction } from '../direction.js'
+import { Vulnerable } from '../vulnerable.js'
+import { Deal } from '../deal.js'
+import { Contract } from '../contract.js'
+import { DeclaredContract } from '../declaredContract.js'
+import { DealOutcome } from '../dealOutcome.js'
 
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
@@ -58,6 +64,130 @@ export class PBNGame {
     const index = this._sections.findIndex(section => section.tagPair?.name.toLowerCase() === lowerTagName)
     if (index !== -1) {
       this._sections.splice(index, 1)
+    }
+  }
+
+  // The Board tag's PBN value is a non-negative integer (matches Swift's UInt); anything else
+  // (negative, decimal, non-numeric) is treated as absent rather than thrown.
+  getBoard(): number | undefined {
+    const value = this.getTagValue('Board')
+    return value !== undefined && /^\d+$/.test(value) ? Number(value) : undefined
+  }
+
+  setBoard(board: number): void {
+    this.setTag({ name: 'Board', value: `${board}` })
+  }
+
+  // Thin wrapper over Direction's existing PBNCodable conformance.
+  getDealer(): Direction | undefined {
+    const value = this.getTagValue('Dealer')
+    return value === undefined ? undefined : Direction.fromPBN(value)
+  }
+
+  setDealer(dealer: Direction): void {
+    this.setTag({ name: 'Dealer', value: Direction.toPBN(dealer) })
+  }
+
+  // Thin wrapper over Vulnerable's existing PBNCodable conformance (includes its PBN synonyms —
+  // "Love"/"-" for None, "Both" for All — for free).
+  getVulnerable(): Vulnerable | undefined {
+    const value = this.getTagValue('Vulnerable')
+    return value === undefined ? undefined : Vulnerable.fromPBN(value)
+  }
+
+  setVulnerable(vulnerable: Vulnerable): void {
+    this.setTag({ name: 'Vulnerable', value: Vulnerable.toPBN(vulnerable) })
+  }
+
+  // Deal.fromPBN returns Deal | DealError (not Deal | undefined, unlike every other PBNCodable
+  // type here) — a DealError result is treated as "no deal" rather than surfaced, matching this
+  // accessor's undefined-on-failure convention.
+  getDeal(): Deal | undefined {
+    const value = this.getTagValue('Deal')
+    if (value === undefined) return undefined
+    const result = Deal.fromPBN(value)
+    return 'type' in result ? undefined : result
+  }
+
+  setDeal(deal: Deal): void {
+    this.setTag({ name: 'Deal', value: Deal.toPBN(deal) })
+  }
+
+  // Thin wrapper over Direction's existing PBNCodable conformance. A distinct tag from Dealer —
+  // Dealer is who dealt the hand, Declarer is who won the auction (absent until the auction ends).
+  getDeclarer(): Direction | undefined {
+    const value = this.getTagValue('Declarer')
+    return value === undefined ? undefined : Direction.fromPBN(value)
+  }
+
+  setDeclarer(declarer: Direction): void {
+    this.setTag({ name: 'Declarer', value: Direction.toPBN(declarer) })
+  }
+
+  // Thin wrapper over Contract's existing PBNCodable conformance. Note: Swift's actual Contract
+  // tag can also hold the literal value "Pass" (auction ended with no contract), modeled there as
+  // a separate ContractTagValue (.pass | .contract(Contract)) rather than a bare Contract. Using
+  // plain Contract here means "Pass" fails to parse just like any other invalid/missing value —
+  // both collapse to undefined, rather than being distinguished.
+  getContract(): Contract | undefined {
+    const value = this.getTagValue('Contract')
+    return value === undefined ? undefined : Contract.fromPBN(value)
+  }
+
+  setContract(contract: Contract): void {
+    this.setTag({ name: 'Contract', value: Contract.toPBN(contract) })
+  }
+
+  // The Result tag's PBN value is a non-negative integer (like Board) further constrained to
+  // 0-13 tricks taken; out-of-range or malformed values are treated as absent rather than thrown.
+  getResult(): number | undefined {
+    const value = this.getTagValue('Result')
+    if (value === undefined || !/^\d+$/.test(value)) return undefined
+    const result = Number(value)
+    return result <= 13 ? result : undefined
+  }
+
+  setResult(result: number): void {
+    this.setTag({ name: 'Result', value: `${result}` })
+  }
+
+  // Combines Declarer, Contract, and Result. Reads the raw Contract tag directly for the "Pass"
+  // check (case-insensitive, matching Swift) rather than through getContract() — getContract()
+  // already collapses "Pass" into undefined, which would make it indistinguishable from a
+  // missing/invalid tag here. Only ever returns passedOut or played (matching Swift's dealOutcome
+  // getter); other DealOutcome kinds (scoreOnly, average, etc.) have no Contract/Declarer/Result
+  // representation and can't be produced by this accessor.
+  getDealOutcome(): DealOutcome | undefined {
+    const contractValue = this.getTagValue('Contract')
+    if (contractValue !== undefined && contractValue.toUpperCase() === 'PASS') {
+      return DealOutcome.passedOut
+    }
+    const contract = this.getContract()
+    const declarer = this.getDeclarer()
+    const result = this.getResult()
+    if (contract === undefined || declarer === undefined || result === undefined) return undefined
+    return DealOutcome.played(DeclaredContract.make(contract, declarer), result)
+  }
+
+  // Only passedOut and played can be represented via Declarer/Contract/Result — anything else
+  // (scoreOnly, average, averagePlus, averageMinus, noScore) throws rather than silently doing
+  // nothing or discarding data, since the caller asked to store something this trio of tags
+  // genuinely cannot express.
+  setDealOutcome(outcome: DealOutcome): void {
+    switch (outcome.kind) {
+      case 'passedOut':
+        this.setTag({ name: 'Contract', value: 'Pass' })
+        // Stale Declarer/Result from a previous contract would otherwise linger alongside "Pass".
+        this.deleteSection('Declarer')
+        this.deleteSection('Result')
+        return
+      case 'played':
+        this.setContract(outcome.declaredContract.contract)
+        this.setDeclarer(outcome.declaredContract.declarer)
+        this.setResult(outcome.tricksTaken)
+        return
+      default:
+        throw new Error(`DealOutcome kind '${outcome.kind}' cannot be represented by Declarer/Contract/Result tags`)
     }
   }
 }

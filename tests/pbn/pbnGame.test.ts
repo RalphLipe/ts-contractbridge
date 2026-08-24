@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { PBNGame } from '../../src/pbn/pbnGame.js'
 import { PBNSection } from '../../src/pbn/pbnSection.js'
+import { Deal } from '../../src/deal.js'
+import { Contract } from '../../src/contract.js'
+import { DeclaredContract } from '../../src/declaredContract.js'
+import { DealOutcome } from '../../src/dealOutcome.js'
 
 describe('PBNGame', () => {
   it('defaults to no sections', () => {
@@ -169,6 +173,318 @@ describe('PBNGame', () => {
       const game = new PBNGame()
       game.deleteSection('Declarer')
       expect(game.sections).toHaveLength(0)
+    })
+  })
+
+  describe('getBoard / setBoard', () => {
+    it('setBoard followed by getBoard round-trips', () => {
+      const game = new PBNGame()
+      game.setBoard(7)
+      expect(game.getBoard()).toBe(7)
+      expect(game.getTagValue('Board')).toBe('7')
+    })
+
+    it('getBoard parses the Board tag as an integer', () => {
+      const game = new PBNGame([new PBNSection(['[Board "12"]'])])
+      expect(game.getBoard()).toBe(12)
+    })
+
+    it('getBoard allows 0', () => {
+      const game = new PBNGame([new PBNSection(['[Board "0"]'])])
+      expect(game.getBoard()).toBe(0)
+    })
+
+    it('getBoard is undefined when there is no Board tag', () => {
+      const game = new PBNGame()
+      expect(game.getBoard()).toBeUndefined()
+    })
+
+    it('getBoard is undefined for a non-integer or negative value', () => {
+      expect(new PBNGame([new PBNSection(['[Board "-1"]'])]).getBoard()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Board "1.5"]'])]).getBoard()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Board "abc"]'])]).getBoard()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Board ""]'])]).getBoard()).toBeUndefined()
+    })
+
+    it('setBoard replaces an existing Board tag', () => {
+      const game = new PBNGame([new PBNSection(['[Board "1"]'])])
+      game.setBoard(2)
+      expect(game.sections).toHaveLength(1)
+      expect(game.getBoard()).toBe(2)
+    })
+  })
+
+  describe('getDealer / setDealer', () => {
+    it('setDealer followed by getDealer round-trips', () => {
+      const game = new PBNGame()
+      game.setDealer('S')
+      expect(game.getDealer()).toBe('S')
+      expect(game.getTagValue('Dealer')).toBe('S')
+    })
+
+    it('getDealer parses the Dealer tag case-insensitively', () => {
+      const game = new PBNGame([new PBNSection(['[Dealer "w"]'])])
+      expect(game.getDealer()).toBe('W')
+    })
+
+    it('getDealer is undefined when there is no Dealer tag', () => {
+      const game = new PBNGame()
+      expect(game.getDealer()).toBeUndefined()
+    })
+
+    it('getDealer is undefined for an invalid direction', () => {
+      const game = new PBNGame([new PBNSection(['[Dealer "X"]'])])
+      expect(game.getDealer()).toBeUndefined()
+    })
+
+    it('setDealer replaces an existing Dealer tag', () => {
+      const game = new PBNGame([new PBNSection(['[Dealer "N"]'])])
+      game.setDealer('E')
+      expect(game.sections).toHaveLength(1)
+      expect(game.getDealer()).toBe('E')
+    })
+  })
+
+  describe('getVulnerable / setVulnerable', () => {
+    it('setVulnerable followed by getVulnerable round-trips', () => {
+      const game = new PBNGame()
+      game.setVulnerable('NS')
+      expect(game.getVulnerable()).toBe('NS')
+      expect(game.getTagValue('Vulnerable')).toBe('NS')
+    })
+
+    it('getVulnerable accepts PBN synonyms case-insensitively', () => {
+      expect(new PBNGame([new PBNSection(['[Vulnerable "love"]'])]).getVulnerable()).toBe('None')
+      expect(new PBNGame([new PBNSection(['[Vulnerable "both"]'])]).getVulnerable()).toBe('All')
+      expect(new PBNGame([new PBNSection(['[Vulnerable "ew"]'])]).getVulnerable()).toBe('EW')
+    })
+
+    it('getVulnerable is undefined when there is no Vulnerable tag', () => {
+      const game = new PBNGame()
+      expect(game.getVulnerable()).toBeUndefined()
+    })
+
+    it('getVulnerable is undefined for an invalid value', () => {
+      const game = new PBNGame([new PBNSection(['[Vulnerable "X"]'])])
+      expect(game.getVulnerable()).toBeUndefined()
+    })
+
+    it('setVulnerable replaces an existing Vulnerable tag', () => {
+      const game = new PBNGame([new PBNSection(['[Vulnerable "None"]'])])
+      game.setVulnerable('All')
+      expect(game.sections).toHaveLength(1)
+      expect(game.getVulnerable()).toBe('All')
+    })
+  })
+
+  describe('getDeal / setDeal', () => {
+    const SAMPLE_PBN = 'N:AKQ.JT9.876.5432 JT9.AKQ.5432.876 876.5432.AKQ.JT9 5432.876.JT9.AKQ'
+
+    it('setDeal followed by getDeal round-trips', () => {
+      const deal = Deal.fromPBN(SAMPLE_PBN) as Deal
+      const game = new PBNGame()
+      game.setDeal(deal)
+      expect(game.getDeal()).toEqual(deal)
+      expect(game.getTagValue('Deal')).toBe(SAMPLE_PBN)
+    })
+
+    it('getDeal parses the Deal tag', () => {
+      const game = new PBNGame([new PBNSection([`[Deal "${SAMPLE_PBN}"]`])])
+      const deal = game.getDeal()
+      expect(deal).toBeDefined()
+      expect(deal!.dealer).toBe('N')
+      expect(deal!.hands['N'].size).toBe(13)
+    })
+
+    it('getDeal is undefined when there is no Deal tag', () => {
+      const game = new PBNGame()
+      expect(game.getDeal()).toBeUndefined()
+    })
+
+    it('getDeal is undefined for an invalid deal string (DealError, not thrown)', () => {
+      const game = new PBNGame([new PBNSection(['[Deal "garbage"]'])])
+      expect(game.getDeal()).toBeUndefined()
+    })
+
+    it('setDeal replaces an existing Deal tag', () => {
+      const original = Deal.fromPBN(SAMPLE_PBN) as Deal
+      const rotated = Deal.rotated(original, 1)
+      const game = new PBNGame([new PBNSection([`[Deal "${SAMPLE_PBN}"]`])])
+      game.setDeal(rotated)
+      expect(game.sections).toHaveLength(1)
+      expect(game.getDeal()).toEqual(rotated)
+    })
+  })
+
+  describe('getDeclarer / setDeclarer', () => {
+    it('setDeclarer followed by getDeclarer round-trips', () => {
+      const game = new PBNGame()
+      game.setDeclarer('S')
+      expect(game.getDeclarer()).toBe('S')
+      expect(game.getTagValue('Declarer')).toBe('S')
+    })
+
+    it('getDeclarer parses the Declarer tag case-insensitively', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "w"]'])])
+      expect(game.getDeclarer()).toBe('W')
+    })
+
+    it('getDeclarer is undefined when there is no Declarer tag', () => {
+      const game = new PBNGame()
+      expect(game.getDeclarer()).toBeUndefined()
+    })
+
+    it('getDeclarer is undefined for an invalid direction', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "X"]'])])
+      expect(game.getDeclarer()).toBeUndefined()
+    })
+
+    it('setDeclarer replaces an existing Declarer tag', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "N"]'])])
+      game.setDeclarer('E')
+      expect(game.sections).toHaveLength(1)
+      expect(game.getDeclarer()).toBe('E')
+    })
+
+    it('Dealer and Declarer are independent tags', () => {
+      const game = new PBNGame()
+      game.setDealer('N')
+      game.setDeclarer('E')
+      expect(game.getDealer()).toBe('N')
+      expect(game.getDeclarer()).toBe('E')
+      expect(game.sections).toHaveLength(2)
+    })
+  })
+
+  describe('getContract / setContract', () => {
+    it('setContract followed by getContract round-trips', () => {
+      const game = new PBNGame()
+      const contract = Contract.make('3NT')
+      game.setContract(contract)
+      expect(game.getContract()).toEqual(contract)
+      expect(game.getTagValue('Contract')).toBe('3NT')
+    })
+
+    it('getContract parses risk (doubled/redoubled)', () => {
+      const game = new PBNGame([new PBNSection(['[Contract "4HX"]'])])
+      expect(game.getContract()).toEqual(Contract.make('4H', 'X'))
+    })
+
+    it('getContract is undefined when there is no Contract tag', () => {
+      const game = new PBNGame()
+      expect(game.getContract()).toBeUndefined()
+    })
+
+    it('getContract is undefined for an invalid contract string', () => {
+      const game = new PBNGame([new PBNSection(['[Contract "garbage"]'])])
+      expect(game.getContract()).toBeUndefined()
+    })
+
+    it('getContract is undefined for "Pass" (no distinct passed-out representation yet)', () => {
+      const game = new PBNGame([new PBNSection(['[Contract "Pass"]'])])
+      expect(game.getContract()).toBeUndefined()
+    })
+
+    it('setContract replaces an existing Contract tag', () => {
+      const game = new PBNGame([new PBNSection(['[Contract "3NT"]'])])
+      game.setContract(Contract.make('6C', 'XX'))
+      expect(game.sections).toHaveLength(1)
+      expect(game.getContract()).toEqual(Contract.make('6C', 'XX'))
+    })
+  })
+
+  describe('getResult / setResult', () => {
+    it('setResult followed by getResult round-trips', () => {
+      const game = new PBNGame()
+      game.setResult(9)
+      expect(game.getResult()).toBe(9)
+      expect(game.getTagValue('Result')).toBe('9')
+    })
+
+    it('getResult allows the full 0-13 trick range', () => {
+      expect(new PBNGame([new PBNSection(['[Result "0"]'])]).getResult()).toBe(0)
+      expect(new PBNGame([new PBNSection(['[Result "13"]'])]).getResult()).toBe(13)
+    })
+
+    it('getResult is undefined when there is no Result tag', () => {
+      const game = new PBNGame()
+      expect(game.getResult()).toBeUndefined()
+    })
+
+    it('getResult is undefined for values outside 0-13', () => {
+      expect(new PBNGame([new PBNSection(['[Result "14"]'])]).getResult()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Result "-1"]'])]).getResult()).toBeUndefined()
+    })
+
+    it('getResult is undefined for a non-integer value', () => {
+      expect(new PBNGame([new PBNSection(['[Result "1.5"]'])]).getResult()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Result "abc"]'])]).getResult()).toBeUndefined()
+    })
+
+    it('setResult replaces an existing Result tag', () => {
+      const game = new PBNGame([new PBNSection(['[Result "5"]'])])
+      game.setResult(10)
+      expect(game.sections).toHaveLength(1)
+      expect(game.getResult()).toBe(10)
+    })
+  })
+
+  describe('getDealOutcome / setDealOutcome', () => {
+    it('recognizes "Pass" as passedOut, case-insensitively', () => {
+      expect(new PBNGame([new PBNSection(['[Contract "Pass"]'])]).getDealOutcome()).toEqual(DealOutcome.passedOut)
+      expect(new PBNGame([new PBNSection(['[Contract "PASS"]'])]).getDealOutcome()).toEqual(DealOutcome.passedOut)
+      expect(new PBNGame([new PBNSection(['[Contract "pass"]'])]).getDealOutcome()).toEqual(DealOutcome.passedOut)
+    })
+
+    it('combines Declarer/Contract/Result into a played outcome', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Declarer "N"]']),
+        new PBNSection(['[Contract "3NT"]']),
+        new PBNSection(['[Result "9"]']),
+      ])
+      const expected = DealOutcome.played(DeclaredContract.make(Contract.make('3NT'), 'N'), 9)
+      expect(game.getDealOutcome()).toEqual(expected)
+    })
+
+    it('is undefined when the auction has not produced a full outcome yet', () => {
+      expect(new PBNGame().getDealOutcome()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Contract "3NT"]'])]).getDealOutcome()).toBeUndefined()
+      expect(new PBNGame([
+        new PBNSection(['[Contract "3NT"]']),
+        new PBNSection(['[Declarer "N"]']),
+      ]).getDealOutcome()).toBeUndefined()
+    })
+
+    it('setDealOutcome(passedOut) sets Contract to "Pass" and clears Declarer/Result', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Declarer "N"]']),
+        new PBNSection(['[Contract "3NT"]']),
+        new PBNSection(['[Result "9"]']),
+      ])
+      game.setDealOutcome(DealOutcome.passedOut)
+      expect(game.getTagValue('Contract')).toBe('Pass')
+      expect(game.getTagValue('Declarer')).toBeUndefined()
+      expect(game.getTagValue('Result')).toBeUndefined()
+      expect(game.getDealOutcome()).toEqual(DealOutcome.passedOut)
+    })
+
+    it('setDealOutcome(played) sets Declarer/Contract/Result and round-trips', () => {
+      const game = new PBNGame()
+      const outcome = DealOutcome.played(DeclaredContract.make(Contract.make('4H', 'X'), 'E'), 10)
+      game.setDealOutcome(outcome)
+      expect(game.getTagValue('Declarer')).toBe('E')
+      expect(game.getTagValue('Contract')).toBe('4HX')
+      expect(game.getTagValue('Result')).toBe('10')
+      expect(game.getDealOutcome()).toEqual(outcome)
+    })
+
+    it('setDealOutcome throws for kinds with no Declarer/Contract/Result representation', () => {
+      const game = new PBNGame()
+      expect(() => game.setDealOutcome(DealOutcome.scoreOnly(100))).toThrow()
+      expect(() => game.setDealOutcome(DealOutcome.average)).toThrow()
+      expect(() => game.setDealOutcome(DealOutcome.averagePlus)).toThrow()
+      expect(() => game.setDealOutcome(DealOutcome.averageMinus)).toThrow()
+      expect(() => game.setDealOutcome(DealOutcome.noScore)).toThrow()
     })
   })
 })

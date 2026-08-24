@@ -150,6 +150,60 @@ implementation detail without changing any public API, so this isn't a foreclosi
     (case-insensitive), no-op if none matches. Only targets named sections — there's no way to
     pass "no tag" through a `string` parameter, so the global/untagged section can't be deleted
     this way.
+  - `getBoard(): number | undefined` / `setBoard(board: number): void` — first typed tag accessor,
+    started 2026-08. Board's PBN value is a non-negative integer (matches Swift's `UInt`); anything
+    that doesn't match `/^\d+$/` (negative, decimal, non-numeric, empty) reads as `undefined` rather
+    than throwing — no PBNError equivalent exists yet. `setBoard` doesn't validate its input is a
+    non-negative integer (trusts the caller, matching this codebase's "validate only at boundaries"
+    convention); passing a non-integer would round-trip to a value `getBoard` can't parse back.
+    **How to apply going forward:** most future accessors (Deal, Contract, Declarer, Vulnerable) are
+    expected to be thin wrappers delegating to existing types' `fromPBN`/`toPBN` — Board needed its
+    own tiny parse/format logic only because there's no existing "non-negative integer" PBN type.
+    One exception flagged by Ralph: `getDealOutcome`/`setDealOutcome` will NOT be thin — it combines
+    three tags (Declarer, Contract, Result) — build accessors one at a time, starting simple.
+  - `getDealer(): Direction | undefined` / `setDealer(dealer: Direction): void` — second accessor,
+    the first genuinely thin one: delegates entirely to `Direction.fromPBN`/`Direction.toPBN`
+    (already handle case-insensitivity/validation), no new parsing logic at all. Confirms the "most
+    accessors are thin wrappers" expectation above.
+  - `getVulnerable(): Vulnerable | undefined` / `setVulnerable(vulnerable: Vulnerable): void` — same
+    thin-wrapper shape as `getDealer`/`setDealer`, delegating to `Vulnerable.fromPBN`/`toPBN` (gets
+    the "Love"/"-"/"Both" PBN synonyms and case-insensitivity for free).
+  - `getDeal(): Deal | undefined` / `setDeal(deal: Deal): void` — **the one exception so far to
+    "just delegate to fromPBN/toPBN directly"**: `Deal.fromPBN` returns `Deal | DealError`, not
+    `Deal | undefined` (per its `PBNCodable<Deal, DealError>` conformance), so `getDeal` has to
+    check `'type' in result` and fold a `DealError` into `undefined` to match every other
+    accessor's undefined-on-failure convention. Worth remembering for any future accessor backed
+    by a type whose `fromPBN` doesn't return a plain `T | undefined` (so far, only `Deal`).
+  - `getDeclarer(): Direction | undefined` / `setDeclarer(declarer: Direction): void` — thin wrapper
+    like `getDealer`/`setDealer` (same `Direction.fromPBN`/`toPBN`), but a genuinely distinct tag:
+    Dealer = who dealt the hand, Declarer = who won the auction (absent until the auction ends).
+    They're independent tags/sections, not aliases of each other.
+  - `getContract(): Contract | undefined` / `setContract(contract: Contract): void` — thin wrapper
+    over `Contract.fromPBN`/`toPBN`. **Known simplification, flagged to Ralph:** Swift's real
+    Contract tag can hold the literal `"Pass"` (auction ended with no contract), modeled there as a
+    separate `ContractTagValue` (`.pass | .contract(Contract)`), not a bare `Contract`. Using plain
+    `Contract` here means `"Pass"` fails `Contract.fromPBN` just like any invalid string — a passed
+    -out auction and a missing/malformed tag both collapse to `undefined`, undistinguished. Revisit
+    if that distinction turns out to matter (e.g. once `getDealOutcome` needs to tell them apart).
+  - `getResult(): number | undefined` / `setResult(result: number): void` — same non-negative-
+    integer shape as `getBoard`/`setBoard`, further constrained to 0-13 (tricks taken); out-of-range
+    or malformed values read as `undefined` rather than throwing.
+  - `getDealOutcome(): DealOutcome | undefined` — done 2026-08, the non-thin-wrapper accessor
+    flagged earlier. Reads the raw `Contract` tag value directly (not via `getContract()`, which
+    already collapses `"Pass"` into `undefined`) to detect `"Pass"` case-insensitively → returns
+    `DealOutcome.passedOut`. Otherwise combines `getContract()`/`getDeclarer()`/`getResult()` into
+    `DealOutcome.played(...)` if all three are present, else `undefined`. Matches Swift's read-only
+    `dealOutcome` getter exactly — only ever returns `passedOut` or `played`.
+  - `setDealOutcome(outcome: DealOutcome): void` — **`passedOut`**: sets `Contract` to `"Pass"` and
+    deletes `Declarer`/`Result` (Swift's getter doesn't check them once Contract="Pass", but leaving
+    them behind would be exactly the stale-data problem this whole module has been trying to avoid,
+    so they're cleared). **`played`**: sets `Contract`/`Declarer`/`Result` from the
+    `DeclaredContract`+`tricksTaken`. **Everything else (`scoreOnly`/`average`/`averagePlus`/
+    `averageMinus`/`noScore`) throws a plain `Error`** — confirmed with Ralph via AskUserQuestion:
+    these kinds have no Declarer/Contract/Result representation at all, and silently no-op'ing or
+    discarding data would hide a real caller mistake rather than surface it. No PBNError-equivalent
+    exists yet (still an open question below), so this is a plain `Error`, not a typed one — revisit
+    if/when a real error-type design lands for this module.
 - **`PBNSection`** (`src/pbn/pbnSection.ts`, new 2026-08) — `lines: readonly string[]`, raw/unparsed
   and read-only (mutate only by replacing the whole section via `PBNGame.setSection`). Concept
   introduced by Ralph: per the PBN spec, a game is really a sequence of "sections," each starting
