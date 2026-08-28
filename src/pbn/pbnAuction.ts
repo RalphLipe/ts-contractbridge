@@ -17,7 +17,6 @@ export class PBNAuctionError extends Error {
 }
 
 export type PBNAuctionCall = {
-  readonly id: number
   readonly position: Direction
   readonly call: Call
   readonly note?: string
@@ -136,7 +135,6 @@ const makingCall = (a: PBNAuction, call: Call, note?: string, nags?: readonly nu
   const lastNoteNumber = Math.max(0, ...a.calls.map(ac => ac.noteNumber ?? 0))
   const noteNumber = note !== undefined ? lastNoteNumber + 1 : undefined
   const newCall: PBNAuctionCall = {
-    id: a.calls.length,
     position: caller,
     call,
     ...(note !== undefined && { note }),

@@ -321,6 +321,13 @@ record what *actually happened at the table*, including rule violations, a diffe
   one anyway, so multiple suffix-like tokens on one call are just accepted as multiple NAGs, same as
   multiple raw `$N` tokens would be.
   Note reference range is documented as 1-32; nothing enforces that ceiling yet (low priority).
+- **`PBNAuctionCall.id` removed (2026-08).** It was a straight carryover from Swift's `AuctionCall:
+  Identifiable` — needed there only for SwiftUI's `ForEach` list-diffing, never read by any actual
+  bridge/PBN logic (confirmed via grep of `Auction.swift`: `id` only appears in the struct
+  definition and constructor, never consulted anywhere). Ralph caught this as Swift-specific
+  baggage that shouldn't have carried over. **General lesson for future ports:** watch for fields
+  whose only purpose in Swift is a UI-framework protocol conformance (`Identifiable`,
+  `ObservableObject`, etc.) — those don't belong in a plain-data TS port.
 - **Not started yet:** `*`/`+`/`-`/`^I`/`^S` (next up, in that order per Ralph's sequencing),
   `AnnotatedPlay`'s `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag shape, the actual
   parser (Swift's `Parse.swift`), PBNError equivalent, Note/ContractTagValue/OptimumScoreTagValue

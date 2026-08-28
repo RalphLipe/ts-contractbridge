@@ -228,7 +228,7 @@ describe('PBNAuction', () => {
       const calls = ['1S', 'Pass', '2S', 'Pass', '3S', 'Pass', '4S', 'Pass'] as const
       const a = {
         dealer: 'N' as const,
-        calls: calls.map((call, i) => ({ id: i, position: 'N' as const, call })),
+        calls: calls.map(call => ({ position: 'N' as const, call })),
       }
       expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', '3S Pass 4S Pass'])
     })
@@ -256,8 +256,8 @@ describe('PBNAuction', () => {
       const a = {
         dealer: 'N' as const,
         calls: [
-          { id: 0, position: 'N' as const, call: '1S' as const, note: 'first note', noteNumber: 99 },
-          { id: 1, position: 'E' as const, call: 'Pass' as const, note: 'second note', noteNumber: 1 },
+          { position: 'N' as const, call: '1S' as const, note: 'first note', noteNumber: 99 },
+          { position: 'E' as const, call: 'Pass' as const, note: 'second note', noteNumber: 1 },
         ],
       }
       expect(PBNAuction.toPBNSection(a)).toEqual([
@@ -359,7 +359,7 @@ describe('PBNAuction', () => {
         '[Note "1:some note"]',
       ])
       expect(result?.calls[0]).toEqual({
-        id: 0, position: 'N', call: '1S', note: 'some note', noteNumber: 1, nags: [3, 25],
+        position: 'N', call: '1S', note: 'some note', noteNumber: 1, nags: [3, 25],
       })
       expect(PBNAuction.toPBNSection(result!)).toEqual([
         '[Auction "N"]',
