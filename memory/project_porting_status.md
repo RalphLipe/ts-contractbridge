@@ -42,7 +42,9 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
 - DealOutcome → dealOutcome.ts (discriminated union on `kind`; nsScore/ewScore added 2026-08 once
   Contract.declarerScore existed — passedOut=0, played=declarerScore negated for an EW declarer,
   scoreOnly=stored value, average*/noScore=undefined. ewScore normalizes -0 to 0.)
-- Auction + AuctionCall + AuctionError → auction.ts (immutable; makingCall/undoingLast return new instances; no PBN parsing)
+- Auction + AuctionCall + AuctionError → renamed to PBNAuction/PBNAuctionCall/PBNAuctionError and
+  relocated to `src/pbn/pbnAuction.ts` (2026-08, see the PBN module section below for why and for
+  the NAG/suffix work in progress there) — immutable; makingCall/undoingLast return new instances
 - RotateFn → rotatable.ts (type alias `(value: T, seats: number) => T`; Direction/PairDirection/DeclaredContract/DealOutcome/Auction/Deal/DoubleDummyTable/Vulnerable all support rotated)
 
 ## Coding pattern used
@@ -272,9 +274,57 @@ implementation detail without changing any public API, so this isn't a foreclosi
   ("all pass") shorthand into repeated `Pass` calls until `isComplete`. Round-trips
   `fromPBNSection(toPBNSection(a))` back to the original `a`, verified in tests for empty, plain,
   and doubled/redoubled-with-notes auctions.
-- **Not started yet:** `AnnotatedPlay`'s `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag
-  shape, the actual parser (Swift's `Parse.swift`), PBNError equivalent,
-  Note/ContractTagValue/OptimumScoreTagValue value types.
+
+## PBNAuction: renamed from Auction, and real PBN-2.1-spec compliance work in progress (2026-08)
+**Renamed `Auction`/`AuctionCall`/`AuctionError` → `PBNAuction`/`PBNAuctionCall`/`PBNAuctionError`**,
+moved `src/auction.ts` → `src/pbn/pbnAuction.ts`, test file to `tests/pbn/pbnAuction.test.ts`. Ralph's
+reasoning, which I agreed with: the *validation logic* (`makingCall`, `isComplete`,
+`declaredContract`) is genuinely format-agnostic bridge domain logic, but `note`/`noteNumber` and
+`toPBNSection`/`fromPBNSection` are PBN-specific, and PBN-only concepts (NAGs, alerts — see below)
+are about to become a bigger part of the type. No second format (LIN, etc.) is on this library's
+roadmap that would need an un-annotated "general" Auction, so splitting into two types now would be
+solving a problem that doesn't exist yet — one renamed type is the pragmatic choice. Blast radius
+was small (only `index.ts` and its own test imported it; `PBNGame` has no `getAuction`/`setAuction`
+yet). **Careful gotcha when doing this kind of rename:** don't blind-replace the identifier
+substring — string literals like `'[Auction "N"]'` are the actual PBN wire-format tag name and must
+NOT be renamed, only the TS identifiers (`PBNAuction.make(...)`, `PBNAuctionError`, etc.) change.
+
+**Fetched the real PBN 2.1 spec** (http://www.tistis.nl/pbn/pbn_v21.txt — I don't have it memorized;
+had been relying on the Swift source + general recollection before this, which wasn't precise
+enough for a compliance review) and compared it against the current `PBNAuction`. Gaps found,
+confirmed with Ralph, tackling one at a time — **NAGs + suffixes first** (see decision below), then
+`*` (auction ends via explicit termination, not 3 passes), then `+` (intentionally-incomplete
+auction, replaces the next call), then `-` ("not yet player's turn" placeholder token), then `^I`/
+`^S` (irregularity markers: insufficient bid / call skipped due to out-of-rotation call — these
+record what *actually happened at the table*, including rule violations, a different job than
+`makingCall`'s current legality-enforcing validation):
+- **NAGs + suffixes — done 2026-08.** Suffixes (`!`, `?`, `!!`, `??`, `!?`, `?!`) are 1:1 shorthand
+  for **NAG values 1-6** — the spec itself says so (worked example: import `"1S !! =1= $25"` →
+  export `"1S =1= $3 $25"`), and export format always canonicalizes to the numeric `$N` form, never
+  re-emitting the suffix even if that's what was parsed. **Ralph's decision, implemented as
+  specified: parse both forms on import (`suffixToNag` lookup table converts on the spot), but only
+  ever store and emit NAGs** — `PBNAuctionCall.nags?: readonly number[]` has no concept of "this
+  came from a suffix," they're indistinguishable and equally valid post-conversion. `toPBNSection`
+  sorts `nags` ascending on export (spec-mandated order: note reference first, then NAGs ascending);
+  storage order is just encounter-order, sorting is purely an export-time concern.
+  `makingCall(a, call, note?, nags?)` gained a 4th param so nags can be attached directly, not just
+  via parsing. An empty `nags` array is never stored as a field (matches how `note`/`noteNumber` are
+  omitted rather than stored empty/undefined).
+  NAG values aren't Auction-specific either — the spec's own table (0-14 given directly in the doc;
+  full 0-255 range lives in an external `.nag` file) shows 1-6 are for calls, **7-14 are for cards**
+  (the not-yet-ported Play section) plus 13/14 = "call/card corrected manually". So NAGs are a
+  shared annotation mechanism across Auction and Play, not something designed Auction-only — expect
+  to reuse `suffixToNag`-equivalent logic (or extract it) when Play is ported.
+  A call can carry a note reference AND zero-or-more NAGs simultaneously — these stack, they're not
+  mutually exclusive alternatives. Parsing doesn't specifically reject "more than one suffix token"
+  as a distinct error — after conversion there's no way to tell a suffix-derived NAG from a raw `$N`
+  one anyway, so multiple suffix-like tokens on one call are just accepted as multiple NAGs, same as
+  multiple raw `$N` tokens would be.
+  Note reference range is documented as 1-32; nothing enforces that ceiling yet (low priority).
+- **Not started yet:** `*`/`+`/`-`/`^I`/`^S` (next up, in that order per Ralph's sequencing),
+  `AnnotatedPlay`'s `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag shape, the actual
+  parser (Swift's `Parse.swift`), PBNError equivalent, Note/ContractTagValue/OptimumScoreTagValue
+  value types.
 **How to apply:** Don't jump ahead and implement PBNGame's real storage or the parser unless asked
 — Ralph is deliberately sequencing this "a step at a time." Ask what's next rather than assuming
 the natural next chunk (e.g. don't assume "now do the parser" just because it seems logical).

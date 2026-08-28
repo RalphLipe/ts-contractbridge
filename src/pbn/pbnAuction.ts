@@ -1,49 +1,59 @@
-import { Bid } from './bid.js'
-import { Call } from './call.js'
-import { Contract, Risk } from './contract.js'
-import { DeclaredContract } from './declaredContract.js'
-import { Direction } from './direction.js'
-import { formatTagLine, parseTagLine } from './pbn/tagLine.js'
-import type { PBNSectionCodable } from './pbn/pbnSectionCodable.js'
+import { Bid } from '../bid.js'
+import { Call } from '../call.js'
+import { Contract, Risk } from '../contract.js'
+import { DeclaredContract } from '../declaredContract.js'
+import { Direction } from '../direction.js'
+import { formatTagLine, parseTagLine } from './tagLine.js'
+import type { PBNSectionCodable } from './pbnSectionCodable.js'
 
-export class AuctionError extends Error {
+export class PBNAuctionError extends Error {
   constructor(
     readonly kind: 'auctionAlreadyComplete' | 'insufficientBid' | 'invalidDouble' | 'invalidRedouble',
     message: string
   ) {
     super(message)
-    this.name = 'AuctionError'
+    this.name = 'PBNAuctionError'
   }
 }
 
-export type AuctionCall = {
+export type PBNAuctionCall = {
   readonly id: number
   readonly position: Direction
   readonly call: Call
   readonly note?: string
   readonly noteNumber?: number
+  // Numeric Annotation Glyphs (0-255) — PBN's language-independent per-call evaluation, e.g. "good
+  // call" ($1) or "very poor call" ($4). A call may carry zero or more, alongside its note.
+  readonly nags?: readonly number[]
 }
 
-export type Auction = {
+// The six PBN suffix annotations (!, ?, !!, ??, !?, ?!) are 1:1 shorthand for NAG values 1-6.
+// Import format accepts either form; export format always canonicalizes to the numeric $N form
+// (per the spec), so a suffix is converted to its NAG on parse and never stored/emitted as such.
+const suffixToNag: Readonly<Record<string, number>> = {
+  '!': 1, '?': 2, '!!': 3, '??': 4, '!?': 5, '?!': 6,
+}
+
+export type PBNAuction = {
   readonly dealer: Direction
-  readonly calls: readonly AuctionCall[]
+  readonly calls: readonly PBNAuctionCall[]
 }
 
-const make = (dealer: Direction): Auction => ({ dealer, calls: [] })
+const make = (dealer: Direction): PBNAuction => ({ dealer, calls: [] })
 
-const isEmpty = (a: Auction): boolean => a.calls.length === 0
+const isEmpty = (a: PBNAuction): boolean => a.calls.length === 0
 
-const isComplete = (a: Auction): boolean =>
+const isComplete = (a: PBNAuction): boolean =>
   a.calls.length >= 4 && a.calls.slice(-3).every(ac => ac.call === 'Pass')
 
-const nextToAct = (a: Auction): Direction => {
+const nextToAct = (a: PBNAuction): Direction => {
   const last = a.calls[a.calls.length - 1]
   return last === undefined ? a.dealer : Direction.next(last.position)
 }
 
-const hasNotes = (a: Auction): boolean => a.calls.some(ac => ac.note !== undefined)
+const hasNotes = (a: PBNAuction): boolean => a.calls.some(ac => ac.note !== undefined)
 
-const declaredContract = (a: Auction): DeclaredContract | undefined => {
+const declaredContract = (a: PBNAuction): DeclaredContract | undefined => {
   let contractBid: Bid | undefined
   let bidderPair: ReturnType<typeof Direction.pairDirection> | undefined
   let risk: Risk = ''
@@ -76,16 +86,16 @@ const declaredContract = (a: Auction): DeclaredContract | undefined => {
   return undefined
 }
 
-const isPassedOut = (a: Auction): boolean =>
+const isPassedOut = (a: PBNAuction): boolean =>
   isComplete(a) && declaredContract(a) === undefined
 
-function validateCall(a: Auction, call: Call, caller: Direction): void {
+function validateCall(a: PBNAuction, call: Call, caller: Direction): void {
   if (call === 'Pass') return
 
   if (Call.isBid(call)) {
     const current = declaredContract(a)
     if (current !== undefined && Bid.compare(call, current.contract.bid) <= 0) {
-      throw new AuctionError('insufficientBid', 'Bid must be higher than the current bid')
+      throw new PBNAuctionError('insufficientBid', 'Bid must be higher than the current bid')
     }
     return
   }
@@ -93,13 +103,13 @@ function validateCall(a: Auction, call: Call, caller: Direction): void {
   if (call === 'X') {
     const current = declaredContract(a)
     if (current === undefined) {
-      throw new AuctionError('invalidDouble', 'No bid to double')
+      throw new PBNAuctionError('invalidDouble', 'No bid to double')
     }
     if (current.contract.risk !== '') {
-      throw new AuctionError('invalidDouble', 'Contract already doubled or redoubled')
+      throw new PBNAuctionError('invalidDouble', 'Contract already doubled or redoubled')
     }
     if (Direction.pairDirection(current.declarer) === Direction.pairDirection(caller)) {
-      throw new AuctionError('invalidDouble', "Cannot double partner's bid")
+      throw new PBNAuctionError('invalidDouble', "Cannot double partner's bid")
     }
     return
   }
@@ -107,39 +117,40 @@ function validateCall(a: Auction, call: Call, caller: Direction): void {
   if (call === 'XX') {
     const current = declaredContract(a)
     if (current === undefined || current.contract.risk !== 'X') {
-      throw new AuctionError('invalidRedouble', 'Contract must be doubled to redouble')
+      throw new PBNAuctionError('invalidRedouble', 'Contract must be doubled to redouble')
     }
     if (Direction.pairDirection(current.declarer) !== Direction.pairDirection(caller)) {
-      throw new AuctionError('invalidRedouble', "Can only redouble own partnership's bid")
+      throw new PBNAuctionError('invalidRedouble', "Can only redouble own partnership's bid")
     }
     return
   }
 }
 
-/** Returns a new Auction with the call appended, or throws AuctionError if invalid. */
-const makingCall = (a: Auction, call: Call, note?: string): Auction => {
-  if (isComplete(a)) throw new AuctionError('auctionAlreadyComplete', 'Auction is already complete')
+/** Returns a new PBNAuction with the call appended, or throws PBNAuctionError if invalid. */
+const makingCall = (a: PBNAuction, call: Call, note?: string, nags?: readonly number[]): PBNAuction => {
+  if (isComplete(a)) throw new PBNAuctionError('auctionAlreadyComplete', 'Auction is already complete')
 
   const caller = nextToAct(a)
   validateCall(a, call, caller)
 
   const lastNoteNumber = Math.max(0, ...a.calls.map(ac => ac.noteNumber ?? 0))
   const noteNumber = note !== undefined ? lastNoteNumber + 1 : undefined
-  const newCall: AuctionCall = {
+  const newCall: PBNAuctionCall = {
     id: a.calls.length,
     position: caller,
     call,
     ...(note !== undefined && { note }),
     ...(noteNumber !== undefined && { noteNumber }),
+    ...(nags !== undefined && nags.length > 0 && { nags }),
   }
   return { ...a, calls: [...a.calls, newCall] }
 }
 
-/** Returns a new Auction with the last call removed. */
-const undoingLast = (a: Auction): Auction =>
+/** Returns a new PBNAuction with the last call removed. */
+const undoingLast = (a: PBNAuction): PBNAuction =>
   ({ ...a, calls: a.calls.slice(0, -1) })
 
-const rotated = (a: Auction, seats: number): Auction => ({
+const rotated = (a: PBNAuction, seats: number): PBNAuction => ({
   dealer: Direction.rotated(a.dealer, seats),
   calls: a.calls.map(ac => ({ ...ac, position: Direction.rotated(ac.position, seats) }))
 })
@@ -147,17 +158,21 @@ const rotated = (a: Auction, seats: number): Auction => ({
 // Encodes the whole [Auction "D"] section: tag line, then body lines of up to 4 calls each
 // (blank calls array produces no body at all), followed by one [Note "N:text"] line per note.
 // Note numbers are computed fresh here (the order notes are encountered during this pass), not
-// from AuctionCall.noteNumber — that field can develop gaps if an earlier note's call is later
+// from PBNAuctionCall.noteNumber — that field can develop gaps if an earlier note's call is later
 // removed via undoingLast, and Swift's own serialization recomputes fresh too.
-const toPBNSection = (a: Auction): string[] => {
+const toPBNSection = (a: PBNAuction): string[] => {
   const lines: string[] = [formatTagLine({ name: 'Auction', value: Direction.toPBN(a.dealer) })]
   const notes: string[] = []
   let currentLine = ''
   a.calls.forEach((ac, index) => {
     let token = Call.toPBN(ac.call)
+    // Export order per the spec: note reference, then NAGs in ascending order — never a suffix.
     if (ac.note !== undefined) {
       notes.push(ac.note)
       token += ` =${notes.length}=`
+    }
+    if (ac.nags !== undefined && ac.nags.length > 0) {
+      token += [...ac.nags].sort((x, y) => x - y).map(nag => ` $${nag}`).join('')
     }
     currentLine += currentLine === '' ? token : ` ${token}`
     if ((index + 1) % 4 === 0 || index === a.calls.length - 1) {
@@ -171,14 +186,14 @@ const toPBNSection = (a: Auction): string[] => {
   return lines
 }
 
-type RawAnnotatedToken = { value: string; note?: string }
+type RawAnnotatedToken = { value: string; note?: string; nags: number[] }
 
 // Decodes an [Auction "D"] section built by toPBNSection (or a real PBN file's equivalent).
 // Returns undefined for anything malformed: bad tag line, unrecognized dealer, an unparseable
 // call token, a note marker with no matching [Note] line, or an illegal call sequence (a caught
-// AuctionError from makingCall) — matching this codebase's usual "T | undefined" convention
-// rather than inventing a new AuctionError kind just for "unparseable input."
-const fromPBNSection = (lines: readonly string[]): Auction | undefined => {
+// PBNAuctionError from makingCall) — matching this codebase's usual "T | undefined" convention
+// rather than inventing a new PBNAuctionError kind just for "unparseable input."
+const fromPBNSection = (lines: readonly string[]): PBNAuction | undefined => {
   const first = lines[0]
   if (first === undefined) return undefined
   const tag = parseTagLine(first)
@@ -201,8 +216,9 @@ const fromPBNSection = (lines: readonly string[]): Auction | undefined => {
     }
   }
 
-  // Fold "=N=" note markers into the token they follow, per the PBN convention — they don't
-  // create tokens of their own.
+  // Fold "=N=" note markers, suffixes (!, ?, !!, ??, !?, ?!), and "$N" NAGs into the token they
+  // follow, per the PBN convention — none of these create tokens of their own. Import format
+  // allows these in any order and any combination (a call can carry a note AND multiple NAGs).
   const rawTokens = bodyLines.join(' ').split(/\s+/).filter(t => t.length > 0)
   const tokens: RawAnnotatedToken[] = []
   for (const raw of rawTokens) {
@@ -211,8 +227,17 @@ const fromPBNSection = (lines: readonly string[]): Auction | undefined => {
       const last = tokens[tokens.length - 1]
       if (note === undefined || last === undefined) return undefined
       last.note = note
+    } else if (raw in suffixToNag) {
+      const last = tokens[tokens.length - 1]
+      if (last === undefined) return undefined
+      last.nags.push(suffixToNag[raw]!)
+    } else if (/^\$\d+$/.test(raw)) {
+      const nag = Number(raw.slice(1))
+      const last = tokens[tokens.length - 1]
+      if (nag > 255 || last === undefined) return undefined
+      last.nags.push(nag)
     } else {
-      tokens.push({ value: raw })
+      tokens.push({ value: raw, nags: [] })
     }
   }
 
@@ -227,7 +252,7 @@ const fromPBNSection = (lines: readonly string[]): Auction | undefined => {
       }
       const call = Call.fromPBN(token.value)
       if (call === undefined) return undefined
-      auction = makingCall(auction, call, token.note)
+      auction = makingCall(auction, call, token.note, token.nags)
     }
   } catch {
     return undefined
@@ -236,9 +261,9 @@ const fromPBNSection = (lines: readonly string[]): Auction | undefined => {
   return auction
 }
 
-export const Auction = {
+export const PBNAuction = {
   make, isEmpty, isComplete, nextToAct, hasNotes, declaredContract,
   isPassedOut, makingCall, undoingLast, rotated, toPBNSection, fromPBNSection,
 }
 
-Auction satisfies PBNSectionCodable<Auction>
+PBNAuction satisfies PBNSectionCodable<PBNAuction>
