@@ -192,17 +192,17 @@ describe('PBNAuction', () => {
   })
 
   describe('toPBNSection', () => {
-    it('an empty auction is just the tag line, no body', () => {
+    it('an empty auction is just the tag line, plus "+" since it is not complete', () => {
       const a = PBNAuction.make('N')
-      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]'])
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '+'])
     })
 
-    it('up to 4 calls fit on one body line', () => {
+    it('up to 4 calls fit on one body line, "+" joins them since the auction is incomplete', () => {
       let a = PBNAuction.make('N')
       a = PBNAuction.makingCall(a, 'Pass')
       a = PBNAuction.makingCall(a, 'Pass')
       a = PBNAuction.makingCall(a, 'Pass')
-      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', 'Pass Pass Pass'])
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', 'Pass Pass Pass +'])
     })
 
     it('exactly 4 calls stay on one line', () => {
@@ -219,18 +219,19 @@ describe('PBNAuction', () => {
       for (const call of ['1S', 'Pass', '2S', 'Pass', 'Pass'] as const) {
         a = PBNAuction.makingCall(a, call)
       }
-      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', 'Pass'])
+      // Not complete (last 3 calls are '2S','Pass','Pass', not all Pass) — "+" joins the last line.
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', 'Pass +'])
     })
 
     it('an exact multiple of 4 calls does not add a trailing empty line', () => {
-      // Constructed directly rather than via makingCall — this many calls without ending the
-      // auction isn't a legal sequence, but toPBNSection only cares about the calls array shape.
-      const calls = ['1S', 'Pass', '2S', 'Pass', '3S', 'Pass', '4S', 'Pass'] as const
+      // Constructed directly rather than via makingCall — last 3 calls are Pass, so this is
+      // complete and "+" is correctly omitted; keeps this test focused on line-grouping alone.
+      const calls = ['1S', 'Pass', '2S', 'Pass', '3S', 'Pass', 'Pass', 'Pass'] as const
       const a = {
         dealer: 'N' as const,
         calls: calls.map(call => ({ position: 'N' as const, call })),
       }
-      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', '3S Pass 4S Pass'])
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', '3S Pass Pass Pass'])
     })
 
     it('notes get sequential =N= markers inline and trailing [Note] lines', () => {
@@ -262,7 +263,7 @@ describe('PBNAuction', () => {
       }
       expect(PBNAuction.toPBNSection(a)).toEqual([
         '[Auction "N"]',
-        '1S =1= Pass =2=',
+        '1S =1= Pass =2= +',
         '[Note "1:first note"]',
         '[Note "2:second note"]',
       ])
@@ -386,7 +387,7 @@ describe('PBNAuction', () => {
     it('never emits a suffix on export, even for NAG values 1-6', () => {
       let a = PBNAuction.make('N')
       a = PBNAuction.makingCall(a, '1S', undefined, [1])
-      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S $1'])
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S $1 +'])
     })
 
     it('sorts multiple NAGs ascending on export regardless of parse order', () => {
@@ -421,6 +422,48 @@ describe('PBNAuction', () => {
       a = PBNAuction.makingCall(a, '1S', 'natural', [1, 3])
       a = PBNAuction.makingCall(a, 'Pass', undefined, [7])
       a = PBNAuction.makingCall(a, 'Pass')
+      a = PBNAuction.makingCall(a, 'Pass')
+      expect(PBNAuction.fromPBNSection(PBNAuction.toPBNSection(a))).toEqual(a)
+    })
+  })
+
+  describe('"+" incomplete-auction marker', () => {
+    it('toPBNSection appends "+" alone for a fresh, empty auction', () => {
+      const a = PBNAuction.make('N')
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '+'])
+    })
+
+    it('toPBNSection appends "+" on the same line when there is room', () => {
+      let a = PBNAuction.make('N')
+      a = PBNAuction.makingCall(a, '1S')
+      a = PBNAuction.makingCall(a, 'Pass')
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass +'])
+    })
+
+    it('toPBNSection starts a new line for "+" when the previous line is already full', () => {
+      let a = PBNAuction.make('N')
+      a = PBNAuction.makingCall(a, '1S')
+      a = PBNAuction.makingCall(a, 'Pass')
+      a = PBNAuction.makingCall(a, '2S')
+      a = PBNAuction.makingCall(a, 'Pass')
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', '1S Pass 2S Pass', '+'])
+    })
+
+    it('toPBNSection omits "+" for a complete auction', () => {
+      let a = PBNAuction.make('N')
+      for (let i = 0; i < 4; i++) a = PBNAuction.makingCall(a, 'Pass')
+      expect(PBNAuction.toPBNSection(a)).toEqual(['[Auction "N"]', 'Pass Pass Pass Pass'])
+    })
+
+    it('fromPBNSection ignores "+", leaving the auction incomplete with just the calls given', () => {
+      const result = PBNAuction.fromPBNSection(['[Auction "N"]', '1S Pass +'])
+      expect(result?.calls.map(ac => ac.call)).toEqual(['1S', 'Pass'])
+      expect(result !== undefined && PBNAuction.isComplete(result)).toBe(false)
+    })
+
+    it('round-trips an incomplete auction through toPBNSection/fromPBNSection', () => {
+      let a = PBNAuction.make('N')
+      a = PBNAuction.makingCall(a, '1S')
       a = PBNAuction.makingCall(a, 'Pass')
       expect(PBNAuction.fromPBNSection(PBNAuction.toPBNSection(a))).toEqual(a)
     })

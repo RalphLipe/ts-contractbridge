@@ -328,10 +328,29 @@ record what *actually happened at the table*, including rule violations, a diffe
   baggage that shouldn't have carried over. **General lesson for future ports:** watch for fields
   whose only purpose in Swift is a UI-framework protocol conformance (`Identifiable`,
   `ObservableObject`, etc.) — those don't belong in a plain-data TS port.
-- **Not started yet:** `*`/`+`/`-`/`^I`/`^S` (next up, in that order per Ralph's sequencing),
-  `AnnotatedPlay`'s `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag shape, the actual
-  parser (Swift's `Parse.swift`), PBNError equivalent, Note/ContractTagValue/OptimumScoreTagValue
-  value types.
+- **`+` (auction not yet complete) — done 2026-08.** Ralph deliberately picked this as the simpler
+  one to tackle before `*` (sequencing changed on the fly from the original `*`-first plan).
+  **Parsing:** `+` is just skipped/ignored when encountered in the token stream — since it replaces
+  the *next* call rather than being one, the calls already accumulated before it correctly represent
+  an incomplete auction (`isComplete` is false by construction), nothing else to do. No validation
+  that `+` only appears in a sensible position (e.g. not after 3 passes/AP) — kept permissive per
+  Ralph's "keep it simple" framing, matching how malformed input elsewhere in this parser is mostly
+  handled by falling through rather than added rejection rules.
+  **`toPBNSection`:** appends `+` as one more slot after the last real call whenever `!isComplete(a)`
+  — joins the current line if there's room (under 4 tokens so far), otherwise starts a new line,
+  by including it in the *total* token count (`calls.length + 1`) that the existing 4-per-line
+  grouping logic already uses to decide where to flush. A freshly-made empty auction now serializes
+  as `['[Auction "D"]', '+']` rather than just the tag line alone.
+  **Broke several pre-existing tests that used incomplete auctions to test line-wrapping/notes** (a
+  trailing `+` is now correctly appended where none was expected before) — fixed each by either
+  updating the expected output to include `+`, or reshaping the fixture to be complete (last 3 calls
+  = Pass) where that kept the test's original single focus cleaner (e.g. the "exact multiple of 4"
+  line-grouping test). Worth remembering for `*` next: it will likely touch the same set of tests
+  again, for the same reason (any test built around an "auction that just stops" fixture interacts
+  with whatever end-of-auction marker is currently implemented).
+- **Not started yet:** `*`/`-`/`^I`/`^S` (in that order per Ralph's sequencing), `AnnotatedPlay`'s
+  `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag shape, the actual parser (Swift's
+  `Parse.swift`), PBNError equivalent, Note/ContractTagValue/OptimumScoreTagValue value types.
 **How to apply:** Don't jump ahead and implement PBNGame's real storage or the parser unless asked
 — Ralph is deliberately sequencing this "a step at a time." Ask what's next rather than assuming
 the natural next chunk (e.g. don't assume "now do the parser" just because it seems logical).

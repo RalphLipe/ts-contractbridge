@@ -162,6 +162,11 @@ const toPBNSection = (a: PBNAuction): string[] => {
   const lines: string[] = [formatTagLine({ name: 'Auction', value: Direction.toPBN(a.dealer) })]
   const notes: string[] = []
   let currentLine = ''
+  // "+" ("auction not yet complete, more calls to follow") occupies the next slot after the last
+  // call, per the spec — treated as one more token for 4-per-line grouping purposes, so it's
+  // included in the total token count that decides where the trailing partial line gets flushed.
+  const complete = isComplete(a)
+  const totalTokens = a.calls.length + (complete ? 0 : 1)
   a.calls.forEach((ac, index) => {
     let token = Call.toPBN(ac.call)
     // Export order per the spec: note reference, then NAGs in ascending order — never a suffix.
@@ -173,11 +178,15 @@ const toPBNSection = (a: PBNAuction): string[] => {
       token += [...ac.nags].sort((x, y) => x - y).map(nag => ` $${nag}`).join('')
     }
     currentLine += currentLine === '' ? token : ` ${token}`
-    if ((index + 1) % 4 === 0 || index === a.calls.length - 1) {
+    if ((index + 1) % 4 === 0 || index === totalTokens - 1) {
       lines.push(currentLine)
       currentLine = ''
     }
   })
+  if (!complete) {
+    currentLine += currentLine === '' ? '+' : ' +'
+    lines.push(currentLine)
+  }
   notes.forEach((note, i) => {
     lines.push(formatTagLine({ name: 'Note', value: `${i + 1}:${note}` }))
   })
@@ -248,6 +257,10 @@ const fromPBNSection = (lines: readonly string[]): PBNAuction | undefined => {
         }
         continue
       }
+      // "+" marks the auction as intentionally incomplete (more calls to come later) — it
+      // replaces the next call rather than being one, so there's nothing to record beyond what
+      // the calls so far already represent: isComplete(auction) is by construction false here.
+      if (token.value === '+') continue
       const call = Call.fromPBN(token.value)
       if (call === undefined) return undefined
       auction = makingCall(auction, call, token.note, token.nags)
