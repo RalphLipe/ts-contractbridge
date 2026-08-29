@@ -348,18 +348,54 @@ record what *actually happened at the table*, including rule violations, a diffe
   line-grouping test). Worth remembering for `*` next: it will likely touch the same set of tests
   again, for the same reason (any test built around an "auction that just stops" fixture interacts
   with whatever end-of-auction marker is currently implemented).
-- **Not started yet:** `*`/`-`/`^I`/`^S` (in that order per Ralph's sequencing), `AnnotatedPlay`'s
-  `PBNSectionCodable` conformance, Tags/SimpleTag/ComplexTag shape, the actual parser (Swift's
-  `Parse.swift`), PBNError equivalent, Note/ContractTagValue/OptimumScoreTagValue value types.
+- **PAUSED 2026-08 — `PBNAuction` is "good enough for now" (Ralph's words).** `*`/`-`/`^I`/`^S` are
+  NOT next up — Ralph judged them lower priority than other unstarted PBN-module work (see the
+  reordered priority list below) and asked to explicitly deprioritize them rather than continue the
+  original `*`→`-`→`^I`/`^S` sequence. **Don't resume this work proactively** — treat it the same as
+  the conditionally-skipped items above (not forgotten, just parked) until Ralph asks for it again.
 **How to apply:** Don't jump ahead and implement PBNGame's real storage or the parser unless asked
 — Ralph is deliberately sequencing this "a step at a time." Ask what's next rather than assuming
 the natural next chunk (e.g. don't assume "now do the parser" just because it seems logical).
 
-## Remaining types (priority order — reflects current PBN-first goal)
-1. PBN module — full PBN parse/encode (in progress, see section above)
-2. CardSet / CardArray extensions — utility functions for card collections (only if PBN work needs them)
-3. RankSet — see conditional-skip note above
-4. Analysis module — DoubleDummySolver, LeadGenerator, etc.
+## Remaining work (priority order, reordered 2026-08 — PBNAuction gaps explicitly deprioritized)
+1. **PBN module core** — the actual payoff for "get PBN reading/writing working":
+   - **Started 2026-08: `splitLines(text: string): string[]`** (`src/pbn/splitLines.ts`) — the first
+     piece of the actual parser (Swift's `Parse.swift` used `String.enumerateLines` for exactly this
+     reason: PBN files can use CRLF/LF/bare-CR line endings, sometimes mixed within one file, since
+     they come from many eras/platforms). Splits on `/\r\n|\r|\n/` (CRLF tried first in the
+     alternation so it's consumed as one terminator, never as a stray CR + separate LF). **Matches
+     `enumerateLines`'s specific behavior that a terminated text produces no phantom trailing empty
+     line** — `"a\n"` is one line, not two — while a genuine blank line (`"a\n\n"`) still counts.
+     Exported publicly (`index.ts`), matching how `parseTagLine`/`formatTagLine` were also exposed
+     as reusable primitives rather than kept as parser-internal helpers.
+   - The rest of the parser (Swift's `Parse.swift`): raw PBN text → `PBNDocument`/`PBNGame`/
+     `PBNSection` instances. Nothing can actually *read a PBN file* yet without this — everything
+     built so far (`PBNGame`'s typed accessors, `PBNAuction.fromPBNSection`) assumes sections
+     already exist.
+   - `PBNDocument`'s remaining methods: `renumberBoards`, `delete`, `move`, `serialize`, `load`
+     (though `load` is Foundation/URLSession-specific in Swift and likely out of scope — probably
+     just string-in/string-out here, file/network I/O left to the caller).
+   - Remaining `PBNGame` typed accessors beyond what exists (Board/Dealer/Vulnerable/Deal/Declarer/
+     Contract/Result/DealOutcome are done): Event, Site, Date (3 input formats, 1 canonical output —
+     same "preserve original substring" question as the rest of this module), Scoring, the
+     West/North/East/South player-name tags, `getAuction`/`setAuction` (now that `PBNAuction` has
+     `PBNSectionCodable` support), DoubleDummyTricks, OptimumScore.
+   - Still-open design questions from the "PBN.Game storage design" section below: generic-setter
+     validation, `reconcileTags`-equivalent at parse time, overall error/validation strategy
+     (Swift's `ValidationLevel`) — these block the parser more than they block anything else, worth
+     resolving before or during that work rather than as an afterthought.
+   - Small supporting value types: `Note`, `ContractTagValue`, `OptimumScoreTagValue` — probably
+     needed by the accessors/parser above rather than standalone work.
+2. **`AnnotatedPlay` + Play section support** — the other complex tag alongside Auction; needs its
+   own `PBNSectionCodable` conformance, and will reuse NAG handling (NAG values 7-14 are
+   card-specific per the spec) once built.
+3. **`PBNAuction` remaining PBN-2.1 gaps — paused, low priority** (see note above): `*` (explicit
+   auction termination, vs. the 3-pass convention), `-` ("not yet player's turn" placeholder),
+   `^I`/`^S` (irregularity markers for insufficient bids / out-of-rotation calls). Auction already
+   supports the core spec (calls, AP, notes, NAGs/suffixes, `+`) well enough to be usable.
+4. CardSet / CardArray extensions — utility functions for card collections (only if PBN work needs them)
+5. RankSet — see conditional-skip note above
+6. Analysis module — DoubleDummySolver, LeadGenerator, etc.
 
 ## Mutability: values vs. documents
 Confirmed 2026-08: Ralph wants the small domain value types (Direction, Card, Rank, Suit, Strain,
