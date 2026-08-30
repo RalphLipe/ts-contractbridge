@@ -3,7 +3,8 @@ import { Call } from '../call.js'
 import { Contract, Risk } from '../contract.js'
 import { DeclaredContract } from '../declaredContract.js'
 import { Direction } from '../direction.js'
-import { formatTagLine, parseTagLine } from './tagLine.js'
+import { formatTagLine } from './tagLine.js'
+import { parseSectionLines } from './parsedSection.js'
 import type { PBNSectionCodable } from './pbnSectionCodable.js'
 
 export class PBNAuctionError extends Error {
@@ -201,51 +202,19 @@ type RawAnnotatedToken = { value: string; note?: string; nags: number[] }
 // PBNAuctionError from makingCall) — matching this codebase's usual "T | undefined" convention
 // rather than inventing a new PBNAuctionError kind just for "unparseable input."
 const fromPBNSection = (lines: readonly string[]): PBNAuction | undefined => {
-  const first = lines[0]
-  if (first === undefined) return undefined
-  const tag = parseTagLine(first)
-  if (tag === undefined || tag.name.toLowerCase() !== 'auction') return undefined
-  const dealer = Direction.fromPBN(tag.value)
+  const parsed = parseSectionLines(lines)
+  if (parsed.tagPair === undefined || parsed.tagPair.name.toLowerCase() !== 'auction') return undefined
+  const dealer = Direction.fromPBN(parsed.tagPair.value)
   if (dealer === undefined) return undefined
-
-  // Separate trailing [Note "N:text"] lines (keyed by their "=N=" marker) from body text, and
-  // drop "{...}" free-text comment blocks entirely — they're prose, not call tokens, and can
-  // legally appear between calls (matches PBNDocument.fromPBN's same comment-block tracking).
-  const notesByKey = new Map<string, string>()
-  const bodyLines: string[] = []
-  let inCommentBlock = false
-  for (const line of lines.slice(1)) {
-    const trimmed = line.trim()
-
-    if (inCommentBlock) {
-      if (trimmed.endsWith('}')) inCommentBlock = false
-      continue
-    }
-
-    if (trimmed.startsWith('{')) {
-      if (!trimmed.endsWith('}')) inCommentBlock = true
-      continue
-    }
-
-    const lineTag = parseTagLine(line)
-    if (lineTag !== undefined && lineTag.name.toLowerCase() === 'note') {
-      const colonIndex = lineTag.value.indexOf(':')
-      if (colonIndex === -1) return undefined
-      const id = lineTag.value.slice(0, colonIndex).trim()
-      notesByKey.set(`=${id}=`, lineTag.value.slice(colonIndex + 1).trim())
-    } else {
-      bodyLines.push(line)
-    }
-  }
 
   // Fold "=N=" note markers, suffixes (!, ?, !!, ??, !?, ?!), and "$N" NAGs into the token they
   // follow, per the PBN convention — none of these create tokens of their own. Import format
   // allows these in any order and any combination (a call can carry a note AND multiple NAGs).
-  const rawTokens = bodyLines.join(' ').split(/\s+/).filter(t => t.length > 0)
+  const rawTokens = parsed.bodyLines.join(' ').split(/\s+/).filter(t => t.length > 0)
   const tokens: RawAnnotatedToken[] = []
   for (const raw of rawTokens) {
     if (/^=\d+=$/.test(raw)) {
-      const note = notesByKey.get(raw)
+      const note = parsed.notes.get(raw)
       const last = tokens[tokens.length - 1]
       if (note === undefined || last === undefined) return undefined
       last.note = note

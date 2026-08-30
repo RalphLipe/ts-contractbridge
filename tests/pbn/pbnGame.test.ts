@@ -487,4 +487,28 @@ describe('PBNGame', () => {
       expect(() => game.setDealOutcome(DealOutcome.noScore)).toThrow()
     })
   })
+
+  describe('getParsedSection', () => {
+    it('finds the section by tag name and splits it into tagPair/bodyLines/notes/comments', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Board "1"]']),
+        new PBNSection(['[Auction "N"]', '1C Pass 1S Pass', '; a remark', '[Note "1:natural"]']),
+      ])
+      const parsed = game.getParsedSection('Auction')
+      expect(parsed?.tagPair).toEqual({ name: 'Auction', value: 'N' })
+      expect(parsed?.bodyLines).toEqual(['1C Pass 1S Pass'])
+      expect(parsed?.notes.get('=1=')).toBe('natural')
+      expect(parsed?.comments).toEqual(['a remark'])
+    })
+
+    it('matches the tag name case-insensitively', () => {
+      const game = new PBNGame([new PBNSection(['[Auction "N"]'])])
+      expect(game.getParsedSection('auction')?.tagPair).toEqual({ name: 'Auction', value: 'N' })
+    })
+
+    it('is undefined when no section has that tag', () => {
+      const game = new PBNGame([new PBNSection(['[Board "1"]'])])
+      expect(game.getParsedSection('Auction')).toBeUndefined()
+    })
+  })
 })

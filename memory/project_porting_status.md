@@ -292,6 +292,62 @@ implementation detail without changing any public API, so this isn't a foreclosi
   `fromPBNSection(toPBNSection(a))` back to the original `a`, verified in tests for empty, plain,
   and doubled/redoubled-with-notes auctions.
 
+- **`parseSectionLines` / `ParsedSection` / `PBNGame.getParsedSection` — done 2026-08, Ralph's idea.**
+  Ralph noticed the note/comment/body-separation logic in `PBNAuction.fromPBNSection` (see the
+  comment-block bug above) is exactly the kind of thing every future complex-tag section parser
+  (Play, etc.) will need again, and asked for it to be factored out once rather than re-derived —
+  and re-drifted — per caller. Design, and naming feedback given as requested:
+  - **`ParsedSection`** (`src/pbn/parsedSection.ts`, new file) — `{ tagPair: TagPair | undefined,
+    bodyLines: readonly string[], notes: ReadonlyMap<string,string>, comments: readonly string[] }`.
+    No `PBN` prefix, matching `TagPair`'s precedent (plain names for small structural shapes local
+    to this module).
+  - **`parseSectionLines(lines: readonly string[]): ParsedSection`** — the actual reusable logic,
+    a standalone function rather than a `PBNGame` method, because `PBNAuction.fromPBNSection` only
+    ever receives raw `lines: readonly string[]` (the `PBNSectionCodable` contract) — it has no
+    `PBNGame` to call a method on. Absorbs what used to be hand-rolled separately in
+    `PBNAuction.fromPBNSection`: strips the tag-pair line (via `parseTagLine(lines[0])`; if there's
+    no valid tag pair — the "global" section case — `bodyLines` starts from `lines[0]` itself
+    instead of skipping it), tracks `{...}` block state the same way `PBNDocument.fromPBN` does,
+    and **also now recognizes `;`-prefixed single-line comments** — a genuinely new capability
+    neither `PBNDocument.fromPBN` nor the old `PBNAuction.fromPBNSection` had (both previously left
+    `;` lines as undifferentiated body/section content). `notes` is keyed by the literal `"=N="`
+    marker text (e.g. `"=1="`), matching how it's referenced in body content, so a caller can look
+    it up directly without reformatting. A malformed `[Note ...]` line (no colon) falls through to
+    `bodyLines` rather than being silently dropped — matches this module's "never discard a line"
+    discipline, and is a small deliberate behavior change from the old `fromPBNSection` (which
+    returned `undefined` for the whole section on a malformed Note line; now it's just an
+    unparseable body token, likely still `undefined` overall via a different path, but no longer a
+    special case in the shared parser).
+    **`comments` shape, my design call — flagged to Ralph, not yet corrected:** each `;` line or
+    `{...}` block becomes one string with the delimiter characters removed; a multi-line block's
+    lines are joined with `"\n"`, keeping a genuine internal blank line (a paragraph break) but
+    *dropping* a leading/trailing line that was purely the opening `{` or closing `}` with nothing
+    else on it (rather than keeping it as a spurious leading/trailing blank line). Text sharing a
+    line with a delimiter (`"{ opening text"`, `"closing text }"`) has only the delimiter and its
+    immediately-adjacent whitespace stripped, keeping the rest. An unclosed block at end-of-input
+    still becomes a comment (matches `PBNDocument.fromPBN`'s same "absorb rather than throw"
+    handling).
+  - **`PBNGame.getParsedSection(tagName: string): ParsedSection | undefined`** — the method Ralph
+    asked for by name (his suggestion, kept as-is: fits the `get`-prefix convention every other
+    `PBNGame` accessor already uses). Thin: finds the section by tag name (case-insensitive, same
+    scan as `getTagValue`), then calls `parseSectionLines(section.lines)`. `PBNGame.getAuction`
+    itself does NOT use this — it still hands raw `section.lines` straight to
+    `PBNAuction.fromPBNSection`, which needs the tag line included; `getParsedSection` is a sibling
+    convenience for callers that want the split-apart shape directly, not a required detour.
+  - **`PBNAuction.fromPBNSection` refactored to call `parseSectionLines` internally** — its own
+    hand-rolled Note-separation and `inCommentBlock` tracking is gone, replaced by one call to the
+    shared function; the NAG/suffix-folding and call-replay logic (Auction-specific) is unchanged.
+    Its `PBNSectionCodable<PBNAuction>` public contract (`fromPBNSection(lines): PBNAuction |
+    undefined`) is unchanged — the new shared parser is purely an internal implementation detail
+    here, not a signature change.
+  - Tests: `tests/pbn/parsedSection.test.ts` (new, exercises `parseSectionLines` directly — tag/body
+    split, global-section case, notes keyed by `=N=`, malformed-Note fallthrough, `;` comments,
+    single- and multi-line `{...}` comments including the real `Responder Rebid.pbn`-shaped case,
+    text sharing a line with a delimiter, an unclosed trailing block, multiple comments in order)
+    and a new `getParsedSection` describe block in `tests/pbn/pbnGame.test.ts`. All existing
+    `PBNAuction`/`PBNDocument`/`PBNGame` tests pass unchanged — no behavior regression from the
+    refactor. 370 tests total, `tsc --noEmit` and `npm run build` clean.
+
 ## PBNAuction: renamed from Auction, and real PBN-2.1-spec compliance work in progress (2026-08)
 **Renamed `Auction`/`AuctionCall`/`AuctionError` → `PBNAuction`/`PBNAuctionCall`/`PBNAuctionError`**,
 moved `src/auction.ts` → `src/pbn/pbnAuction.ts`, test file to `tests/pbn/pbnAuction.test.ts`. Ralph's

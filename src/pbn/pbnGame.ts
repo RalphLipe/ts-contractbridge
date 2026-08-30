@@ -8,6 +8,8 @@ import { Contract } from '../contract.js'
 import { DeclaredContract } from '../declaredContract.js'
 import { DealOutcome } from '../dealOutcome.js'
 import { PBNAuction } from './pbnAuction.js'
+import { parseSectionLines } from './parsedSection.js'
+import type { ParsedSection } from './parsedSection.js'
 
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
@@ -196,5 +198,15 @@ export class PBNGame {
     const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === 'auction')
     if (section === undefined) return undefined
     return PBNAuction.fromPBNSection(section.lines)
+  }
+
+  // Splits a section's raw lines into tagPair/bodyLines/notes/comments — see ParsedSection. Any
+  // future complex-tag section (Play, etc.) can build on this instead of re-deriving note/comment
+  // separation itself, the way PBNAuction.fromPBNSection now does.
+  getParsedSection(tagName: string): ParsedSection | undefined {
+    const lowerTagName = tagName.toLowerCase()
+    const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === lowerTagName)
+    if (section === undefined) return undefined
+    return parseSectionLines(section.lines)
   }
 }
