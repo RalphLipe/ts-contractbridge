@@ -1,0 +1,25 @@
+
+[Event "Responder should rebid 3NT even if not balanced"]
+[Dealer "S"]
+[Deal "S:- - JT653.A3.AKJT5.8 -"]
+[Auction "S"]
+1C Pass 1S Pass
+1NT Pass 3NT
+{
+If playing new minor forcing then responder should bid 1D
+
+NOTE: How do we implement conditional tests?
+}
+
+[Event "Responder uses new-minor forcing to show 5 spades"]
+[Dealer "S"]
+[Deal "S:- - JT653.A3.AKJT5.8 -"]
+[Auction "S"]
+1C Pass 1S Pass
+1NT Pass 2D =1=
+[Note "1:New minor forcing"]
+{
+This file uses new minor forcing.
+
+TODO: How to implement conditional tests
+}

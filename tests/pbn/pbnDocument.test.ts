@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { PBNDocument } from '../../src/pbn/pbnDocument.js'
 import { PBNGame } from '../../src/pbn/pbnGame.js'
+
+const readTestData = (name: string): string =>
+  readFileSync(new URL(`../../test-data/${name}`, import.meta.url), 'utf8')
 
 describe('PBNDocument', () => {
   it('defaults to an empty document', () => {
@@ -22,5 +26,181 @@ describe('PBNDocument', () => {
     doc.escapedText.push('a header line')
     expect(doc.games).toHaveLength(1)
     expect(doc.escapedText).toEqual(['a header line'])
+  })
+
+  describe('fromPBN', () => {
+    it('an empty string has no games and no escaped text', () => {
+      const doc = PBNDocument.fromPBN('')
+      expect(doc.games).toEqual([])
+      expect(doc.escapedText).toEqual([])
+    })
+
+    it('parses a single game into one section per tag', () => {
+      const doc = PBNDocument.fromPBN('[Board "1"]\n[Dealer "N"]\n')
+      expect(doc.games).toHaveLength(1)
+      expect(doc.games[0]!.sections).toHaveLength(2)
+      expect(doc.games[0]!.getTagValue('Board')).toBe('1')
+      expect(doc.games[0]!.getTagValue('Dealer')).toBe('N')
+    })
+
+    it('a blank line separates games', () => {
+      const doc = PBNDocument.fromPBN('[Board "1"]\n\n[Board "2"]\n')
+      expect(doc.games).toHaveLength(2)
+      expect(doc.games[0]!.getTagValue('Board')).toBe('1')
+      expect(doc.games[1]!.getTagValue('Board')).toBe('2')
+    })
+
+    it('multiple consecutive blank lines still only separate two games (no empty ones between)', () => {
+      const doc = PBNDocument.fromPBN('[Board "1"]\n\n\n\n[Board "2"]\n')
+      expect(doc.games).toHaveLength(2)
+    })
+
+    it('leading blank lines before the first game are ignored', () => {
+      const doc = PBNDocument.fromPBN('\n\n[Board "1"]\n')
+      expect(doc.games).toHaveLength(1)
+      expect(doc.games[0]!.getTagValue('Board')).toBe('1')
+    })
+
+    it('"%" lines before any game go to escapedText, keeping the "%" and exact whitespace', () => {
+      const doc = PBNDocument.fromPBN('% PBN 2.1\n%Creator:Test\n[Board "1"]\n')
+      expect(doc.escapedText).toEqual(['% PBN 2.1', '%Creator:Test'])
+      expect(doc.games).toHaveLength(1)
+    })
+
+    it('a "%" line inside a section joins that section instead of escapedText', () => {
+      const doc = PBNDocument.fromPBN('[Board "1"]\n%mid-section escape\n[Dealer "N"]\n')
+      expect(doc.escapedText).toEqual([])
+      expect(doc.games[0]!.sections[0]!.lines).toEqual(['[Board "1"]', '%mid-section escape'])
+    })
+
+    it('content before a game\'s first tag becomes its "global" untagged section', () => {
+      const doc = PBNDocument.fromPBN('; a comment about the game\n[Board "1"]\n')
+      expect(doc.games).toHaveLength(1)
+      expect(doc.games[0]!.sections).toHaveLength(2)
+      expect(doc.games[0]!.sections[0]!.lines).toEqual(['; a comment about the game'])
+      expect(doc.games[0]!.sections[0]!.tagPair).toBeUndefined()
+      expect(doc.games[0]!.sections[1]!.tagPair).toEqual({ name: 'Board', value: '1' })
+    })
+
+    it('comment content between two tags joins the preceding tag\'s section', () => {
+      const doc = PBNDocument.fromPBN('[Result ""]\n{ a multi-line\ncomment block }\n[BCFlags "1f"]\n')
+      expect(doc.games[0]!.sections).toHaveLength(2)
+      expect(doc.games[0]!.sections[0]!.lines).toEqual(['[Result ""]', '{ a multi-line', 'comment block }'])
+      expect(doc.games[0]!.sections[1]!.lines).toEqual(['[BCFlags "1f"]'])
+    })
+
+    it('a Note tag line is absorbed into the current section rather than starting a new one', () => {
+      const doc = PBNDocument.fromPBN('[Auction "N"]\n1S =1= Pass Pass Pass\n[Note "1:natural"]\n[Board "1"]\n')
+      expect(doc.games[0]!.sections).toHaveLength(2)
+      expect(doc.games[0]!.sections[0]!.lines).toEqual([
+        '[Auction "N"]', '1S =1= Pass Pass Pass', '[Note "1:natural"]',
+      ])
+      expect(doc.games[0]!.sections[1]!.lines).toEqual(['[Board "1"]'])
+    })
+
+    it('a malformed bracketed line (no quoted value) joins the current section as body content', () => {
+      const doc = PBNDocument.fromPBN('[Board "1"]\n[NotAValidTag]\n')
+      expect(doc.games[0]!.sections).toHaveLength(1)
+      expect(doc.games[0]!.sections[0]!.lines).toEqual(['[Board "1"]', '[NotAValidTag]'])
+    })
+
+    it('a game with only comment content and no real tag is still preserved, not discarded', () => {
+      const doc = PBNDocument.fromPBN('; just a stray comment, no tags\n')
+      expect(doc.games).toHaveLength(1)
+      expect(doc.games[0]!.sections).toHaveLength(1)
+      expect(doc.games[0]!.sections[0]!.lines).toEqual(['; just a stray comment, no tags'])
+    })
+
+    it('preserves exact original whitespace and content on every line, no trimming', () => {
+      const doc = PBNDocument.fromPBN('[Board "1"]\n   indented body text   \n')
+      expect(doc.games[0]!.sections[0]!.lines).toEqual(['[Board "1"]', '   indented body text   '])
+    })
+
+    it('parses real-world PBN files without throwing, with the expected number of games', () => {
+      const cases: [string, number][] = [
+        ['Open4thSeat.pbn', 7],
+        ['Responder Rebid.pbn', 2],
+        ['TOB L5 Hands.pbn', 4],
+        ['hand-record-1.pbn', 36],
+        ['hand-record-2.pbn', 36],
+      ]
+      for (const [file, expectedGames] of cases) {
+        const doc = PBNDocument.fromPBN(readTestData(file))
+        expect(doc.games, file).toHaveLength(expectedGames)
+      }
+    })
+
+    it('parses tag values correctly from a real hand record file', () => {
+      const doc = PBNDocument.fromPBN(readTestData('hand-record-1.pbn'))
+      // Document-level header lines, still bearing their "%".
+      expect(doc.escapedText[0]).toBe('% PBN 2.1')
+      expect(doc.escapedText.every(line => line.startsWith('%'))).toBe(true)
+
+      const first = doc.games[0]!
+      expect(first.getTagValue('Board')).toBe('1')
+      expect(first.getTagValue('Dealer')).toBe('N')
+      expect(first.getTagValue('Vulnerable')).toBe('None')
+      expect(first.getDealer()).toBe('N')
+      expect(first.getVulnerable()).toBe('None')
+      expect(first.getBoard()).toBe(1)
+    })
+
+    it('parses a lesson file with multi-line { } comments and custom tags', () => {
+      const doc = PBNDocument.fromPBN(readTestData('TOB L5 Hands.pbn'))
+      expect(doc.games).toHaveLength(4)
+      const first = doc.games[0]!
+      expect(first.getTagValue('Event')).toBe('Lesson 5')
+      expect(first.getTagValue('BCFlags')).toBe('1f')
+      // The comment block's lines live in whichever section (Result's) they followed.
+      const resultSection = first.sections.find(s => s.tagPair?.name === 'Result')
+      expect(resultSection?.lines.some(l => l.includes('\\CQ lead'))).toBe(true)
+    })
+
+    it('parses a file with a leading blank line, missing tags, and a blank line inside a { } comment', () => {
+      const doc = PBNDocument.fromPBN(readTestData('Responder Rebid.pbn'))
+      // The blank line inside each game's {...} comment block must not split it into extra games.
+      expect(doc.games).toHaveLength(2)
+      expect(doc.games[0]!.getTagValue('Dealer')).toBe('S')
+      expect(doc.games[1]!.getTagValue('Dealer')).toBe('S')
+      expect(doc.games[1]!.getTagValue('Event')).toBe('Responder uses new-minor forcing to show 5 spades')
+    })
+
+    describe('"{...}" multi-line comment blocks', () => {
+      it('a blank line inside an open block does not end the game', () => {
+        const doc = PBNDocument.fromPBN('[Board "1"]\n{\nfirst paragraph\n\nsecond paragraph\n}\n[Board "2"]\n')
+        expect(doc.games).toHaveLength(1)
+        expect(doc.games[0]!.sections).toHaveLength(2)
+      })
+
+      it('keeps the blank line as part of the comment section\'s lines', () => {
+        const doc = PBNDocument.fromPBN('[Board "1"]\n{\na\n\nb\n}\n')
+        expect(doc.games[0]!.sections[0]!.lines).toEqual(['[Board "1"]', '{', 'a', '', 'b', '}'])
+      })
+
+      it('a single-line "{ ... }" comment never enters the multi-line state', () => {
+        const doc = PBNDocument.fromPBN('[Board "1"]\n{ a single line comment }\n\n[Board "2"]\n')
+        // The blank line right after the single-line comment DOES end the game, since the block
+        // was already closed on the same line it opened.
+        expect(doc.games).toHaveLength(2)
+      })
+
+      it('a tag-shaped or "%" line inside an open block is treated as plain comment content', () => {
+        const doc = PBNDocument.fromPBN('[Board "1"]\n{\n[Fake "Tag"]\n%not escaped\n}\n[Board "2"]\n')
+        expect(doc.games).toHaveLength(1)
+        expect(doc.games[0]!.sections).toHaveLength(2)
+        expect(doc.games[0]!.sections[0]!.lines).toEqual([
+          '[Board "1"]', '{', '[Fake "Tag"]', '%not escaped', '}',
+        ])
+        expect(doc.escapedText).toEqual([])
+      })
+
+      it('an unclosed block at end of file absorbs the rest of the text without throwing', () => {
+        const doc = PBNDocument.fromPBN('[Board "1"]\n{\nunterminated comment\n\nstill going')
+        expect(doc.games).toHaveLength(1)
+        expect(doc.games[0]!.sections[0]!.lines).toEqual([
+          '[Board "1"]', '{', 'unterminated comment', '', 'still going',
+        ])
+      })
+    })
   })
 })

@@ -368,13 +368,48 @@ the natural next chunk (e.g. don't assume "now do the parser" just because it se
      line** — `"a\n"` is one line, not two — while a genuine blank line (`"a\n\n"`) still counts.
      Exported publicly (`index.ts`), matching how `parseTagLine`/`formatTagLine` were also exposed
      as reusable primitives rather than kept as parser-internal helpers.
-   - The rest of the parser (Swift's `Parse.swift`): raw PBN text → `PBNDocument`/`PBNGame`/
-     `PBNSection` instances. Nothing can actually *read a PBN file* yet without this — everything
-     built so far (`PBNGame`'s typed accessors, `PBNAuction.fromPBNSection`) assumes sections
-     already exist.
-   - `PBNDocument`'s remaining methods: `renumberBoards`, `delete`, `move`, `serialize`, `load`
-     (though `load` is Foundation/URLSession-specific in Swift and likely out of scope — probably
-     just string-in/string-out here, file/network I/O left to the caller).
+   - **`PBNDocument.fromPBN(text): PBNDocument` — done 2026-08.** Static factory method (not a
+     `T | undefined`-returning function like every other `fromPBN` in this codebase — this one
+     genuinely can't fail, see the "never discard a line" invariant below). Splits `text` into
+     games/sections with these rules, agreed with Ralph:
+     - One or more blank lines end the current game (matches Swift).
+     - A `[TagName "Value"]` line starts a new section — except a `Note` tag, which is absorbed
+       into the *current* section instead (matches the original `PBNSection` design intent).
+     - **No line is ever transformed or discarded.** `%` lines keep their `%` and exact original
+       whitespace (a deliberate reversal of my first proposal, which matched Swift by stripping
+       the `%` and trimming — Ralph wants zero text modification anywhere, since **serialization
+       will eventually just be "write the stored lines back out"**, so anything the parser
+       normalizes would be permanently lost). A `%` line only goes to `PBNDocument.escapedText`
+       when *no section is open at all yet*; once any section is open (global or tagged), a `%`
+       line — like a comment, or a malformed bracket-looking line, or literally anything else —
+       just joins that section's lines like ordinary body content.
+     - **Known, accepted limitation:** `PBNGame`/`PBNDocument` don't track how many blank lines
+       separated two games — "1 or more" all collapse to the same game-boundary. Ralph confirmed
+       he doesn't care about this for round-tripping.
+     - **`{...}` multi-line comment blocks — done 2026-08, right after the initial cut.** Ralph
+       deliberately edited `Responder Rebid.pbn` to add a `{...}` block containing a blank line and
+       said the file should still parse to 2 games (not 4) — confirming the gap flagged above
+       needed fixing immediately, not deferring. `inCommentBlock: boolean` state now mirrors
+       Swift: a line whose trimmed content starts with `{` opens the block (unless that same line
+       also ends with `}` — a single-line `{ ... }` comment never enters the multi-line state at
+       all); while open, EVERY line — blank, `%`, tag-shaped, anything — is pure comment content
+       that joins the current section, until a line whose trimmed content ends with `}` closes it.
+       An unclosed block at end-of-file just absorbs the rest of the text (no error). Ralph's test
+       file exercises exactly this: a genuine blank line as a paragraph break inside prose commentary.
+     - Verified against 5 real PBN files Ralph provided in `test-data/` (gitignored `.DS_Store`
+       aside, the `.pbn` files themselves ARE meant to be committed — not test fixtures generated
+       by us, genuine external hand-record/lesson files): a mix of LF and CRLF line endings, a
+       leading blank line before the first game, 40 lines of `%` header content (some with a space
+       after `%`, some without) before the first tag, multi-line `{...}` comment blocks sitting
+       between two ordinary tags, a multi-line complex/table tag (`OptimumResultTable`), and
+       custom/non-standard tags (`BCFlags`) — the parser doesn't need to know which tags are
+       "real" PBN tags vs. app-specific extras, it treats any `[Name "Value"]`-shaped line the
+       same. All 5 files parse into the expected number of games with sensible tag values.
+   - `PBNDocument`'s remaining methods: `renumberBoards`, `delete`, `move`, `serialize` (explicitly
+     next after `fromPBN`, but export-format rules need deciding first — Ralph flagged that written
+     -out data "may be much different than originally read" once we get there, a separate
+     discussion from parsing), `load` (Foundation/URLSession-specific in Swift, likely out of scope
+     — probably just string-in/string-out here, file/network I/O left to the caller).
    - Remaining `PBNGame` typed accessors beyond what exists (Board/Dealer/Vulnerable/Deal/Declarer/
      Contract/Result/DealOutcome are done): Event, Site, Date (3 input formats, 1 canonical output —
      same "preserve original substring" question as the rest of this module), Scoring, the
