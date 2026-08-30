@@ -206,6 +206,23 @@ implementation detail without changing any public API, so this isn't a foreclosi
     discarding data would hide a real caller mistake rather than surface it. No PBNError-equivalent
     exists yet (still an open question below), so this is a plain `Error`, not a typed one — revisit
     if/when a real error-type design lands for this module.
+  - **`getAuction(): PBNAuction | undefined` — added by Ralph directly (2026-08), not by me.**
+    Finds the section tagged `Auction` (case-insensitive) and delegates to
+    `PBNAuction.fromPBNSection(section.lines)`. Simple and correct on its own — the bug this
+    surfaced was in `PBNAuction.fromPBNSection` itself, not here (see below).
+- **Bug found via Ralph's own test (2026-08): `PBNAuction.fromPBNSection` had no `{...}` comment
+  -block awareness**, unlike `PBNDocument.fromPBN` (which got this right from the start). It
+  tokenized *everything* after the tag line as call tokens, including the literal `{`, prose words,
+  and `}` inside an embedded comment — so any Auction section containing a `{...}` block (a
+  completely legal, real-world pattern — see `test-data/Responder Rebid.pbn`'s second game, which
+  Ralph added specifically to catch this) failed to parse at all, returning `undefined`. Fixed with
+  the same line-based `inCommentBlock` tracking as `PBNDocument.fromPBN`: while a block is open, its
+  lines (including any that look like note markers, e.g. `=1=` mentioned in prose) are dropped
+  entirely before tokenization, not treated as body content or notes. **Lesson: when a comment
+  -block concept is added to one parser, check every other parser/tokenizer that walks the same raw
+  lines — they need the same awareness, and won't get it for free.** `PBNGame`'s own line-walking
+  (`getTagValue`, `setSection`, etc.) is unaffected since it operates on whole sections already
+  split by `PBNDocument.fromPBN`, not on raw un-sectioned text.
 - **`PBNSection`** (`src/pbn/pbnSection.ts`, new 2026-08) — `lines: readonly string[]`, raw/unparsed
   and read-only (mutate only by replacing the whole section via `PBNGame.setSection`). Concept
   introduced by Ralph: per the PBN spec, a game is really a sequence of "sections," each starting
@@ -411,10 +428,10 @@ the natural next chunk (e.g. don't assume "now do the parser" just because it se
      discussion from parsing), `load` (Foundation/URLSession-specific in Swift, likely out of scope
      — probably just string-in/string-out here, file/network I/O left to the caller).
    - Remaining `PBNGame` typed accessors beyond what exists (Board/Dealer/Vulnerable/Deal/Declarer/
-     Contract/Result/DealOutcome are done): Event, Site, Date (3 input formats, 1 canonical output —
-     same "preserve original substring" question as the rest of this module), Scoring, the
-     West/North/East/South player-name tags, `getAuction`/`setAuction` (now that `PBNAuction` has
-     `PBNSectionCodable` support), DoubleDummyTricks, OptimumScore.
+     Contract/Result/DealOutcome/**Auction (get only, Ralph-added)** are done): Event, Site, Date (3
+     input formats, 1 canonical output — same "preserve original substring" question as the rest of
+     this module), Scoring, the West/North/East/South player-name tags, `setAuction`,
+     DoubleDummyTricks, OptimumScore.
    - Still-open design questions from the "PBN.Game storage design" section below: generic-setter
      validation, `reconcileTags`-equivalent at parse time, overall error/validation strategy
      (Swift's `ValidationLevel`) — these block the parser more than they block anything else, worth

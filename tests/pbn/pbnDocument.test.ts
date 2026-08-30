@@ -40,14 +40,18 @@ describe('PBNDocument', () => {
       expect(doc.games).toHaveLength(1)
       expect(doc.games[0]!.sections).toHaveLength(2)
       expect(doc.games[0]!.getTagValue('Board')).toBe('1')
+      expect(doc.games[0]!.getBoard()).toBe(1)
       expect(doc.games[0]!.getTagValue('Dealer')).toBe('N')
+      expect(doc.games[0]!.getDealer()).toBe('N')
     })
 
     it('a blank line separates games', () => {
       const doc = PBNDocument.fromPBN('[Board "1"]\n\n[Board "2"]\n')
       expect(doc.games).toHaveLength(2)
       expect(doc.games[0]!.getTagValue('Board')).toBe('1')
+      expect(doc.games[0]!.getBoard()).toBe(1)
       expect(doc.games[1]!.getTagValue('Board')).toBe('2')
+      expect(doc.games[1]!.getBoard()).toBe(2)
     })
 
     it('multiple consecutive blank lines still only separate two games (no empty ones between)', () => {
@@ -58,7 +62,7 @@ describe('PBNDocument', () => {
     it('leading blank lines before the first game are ignored', () => {
       const doc = PBNDocument.fromPBN('\n\n[Board "1"]\n')
       expect(doc.games).toHaveLength(1)
-      expect(doc.games[0]!.getTagValue('Board')).toBe('1')
+      expect(doc.games[0]!.getBoard()).toBe(1)
     })
 
     it('"%" lines before any game go to escapedText, keeping the "%" and exact whitespace', () => {
@@ -202,5 +206,14 @@ describe('PBNDocument', () => {
         ])
       })
     })
+  
+    it('Parses a game fragment with auction containing notes', () => {
+      const doc = PBNDocument.fromPBN(readTestData('Responder Rebid.pbn'))
+      expect(doc.games).toHaveLength(2)
+      const auction = doc.games[1]!.getAuction()
+      expect(auction).toBeDefined()
+      expect(auction?.calls).toHaveLength(7)
+    })
+  
   })
 })

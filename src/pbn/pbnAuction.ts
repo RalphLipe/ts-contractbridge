@@ -208,10 +208,25 @@ const fromPBNSection = (lines: readonly string[]): PBNAuction | undefined => {
   const dealer = Direction.fromPBN(tag.value)
   if (dealer === undefined) return undefined
 
-  // Separate trailing [Note "N:text"] lines (keyed by their "=N=" marker) from body text.
+  // Separate trailing [Note "N:text"] lines (keyed by their "=N=" marker) from body text, and
+  // drop "{...}" free-text comment blocks entirely — they're prose, not call tokens, and can
+  // legally appear between calls (matches PBNDocument.fromPBN's same comment-block tracking).
   const notesByKey = new Map<string, string>()
   const bodyLines: string[] = []
+  let inCommentBlock = false
   for (const line of lines.slice(1)) {
+    const trimmed = line.trim()
+
+    if (inCommentBlock) {
+      if (trimmed.endsWith('}')) inCommentBlock = false
+      continue
+    }
+
+    if (trimmed.startsWith('{')) {
+      if (!trimmed.endsWith('}')) inCommentBlock = true
+      continue
+    }
+
     const lineTag = parseTagLine(line)
     if (lineTag !== undefined && lineTag.name.toLowerCase() === 'note') {
       const colonIndex = lineTag.value.indexOf(':')

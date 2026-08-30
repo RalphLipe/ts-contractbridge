@@ -7,6 +7,7 @@ import { Deal } from '../deal.js'
 import { Contract } from '../contract.js'
 import { DeclaredContract } from '../declaredContract.js'
 import { DealOutcome } from '../dealOutcome.js'
+import { PBNAuction } from './pbnAuction.js'
 
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
@@ -189,5 +190,11 @@ export class PBNGame {
       default:
         throw new Error(`DealOutcome kind '${outcome.kind}' cannot be represented by Declarer/Contract/Result tags`)
     }
+  }
+
+  getAuction(): PBNAuction | undefined {
+    const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === 'auction')
+    if (section === undefined) return undefined
+    return PBNAuction.fromPBNSection(section.lines)
   }
 }

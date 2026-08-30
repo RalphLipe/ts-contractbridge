@@ -468,4 +468,61 @@ describe('PBNAuction', () => {
       expect(PBNAuction.fromPBNSection(PBNAuction.toPBNSection(a))).toEqual(a)
     })
   })
+
+  describe('fromPBNSection: "{...}" comment blocks within the body', () => {
+    it('skips a single-line "{ ... }" comment on its own line, between calls', () => {
+      // "{...}" detection is line-based (matching Swift): it only recognizes "{" as the first
+      // content on a line, same as PBNDocument.fromPBN — not mixed inline with call tokens.
+      const result = PBNAuction.fromPBNSection([
+        '[Auction "N"]', '1S Pass', '{ a comment }', 'Pass Pass',
+      ])
+      expect(result?.calls.map(ac => ac.call)).toEqual(['1S', 'Pass', 'Pass', 'Pass'])
+    })
+
+    it('skips a multi-line comment block, including a blank line inside it', () => {
+      const result = PBNAuction.fromPBNSection([
+        '[Auction "N"]',
+        '1S Pass',
+        '{',
+        'This file uses new minor forcing.',
+        '',
+        'TODO: still needs work',
+        '}',
+        '2S Pass Pass',
+      ])
+      expect(result?.calls.map(ac => ac.call)).toEqual(['1S', 'Pass', '2S', 'Pass', 'Pass'])
+    })
+
+    it('does not confuse note references inside a comment block with real ones', () => {
+      // "=1=" here is just prose inside the comment, not an actual note marker.
+      const result = PBNAuction.fromPBNSection([
+        '[Auction "N"]',
+        '1S =1= Pass Pass Pass',
+        '[Note "1:natural"]',
+        '{',
+        'unrelated commentary mentioning =1= inside prose',
+        '}',
+      ])
+      expect(result?.calls[0]).toMatchObject({ call: '1S', note: 'natural' })
+      expect(result?.calls).toHaveLength(4)
+    })
+
+    it('reproduces the real-world case: notes plus a trailing multi-line comment block', () => {
+      // Matches test-data/Responder Rebid.pbn's second game.
+      const result = PBNAuction.fromPBNSection([
+        '[Auction "S"]',
+        '1C Pass 1S Pass',
+        '1NT Pass 2D =1=',
+        '[Note "1:New minor forcing"]',
+        '{',
+        'This file uses new minor forcing.',
+        '',
+        'TODO: How to implement conditional tests',
+        '}',
+      ])
+      expect(result).toBeDefined()
+      expect(result?.calls).toHaveLength(7)
+      expect(result?.calls[6]).toMatchObject({ call: '2D', note: 'New minor forcing' })
+    })
+  })
 })
