@@ -6,7 +6,9 @@ metadata:
 ---
 
 Swift source: /Users/ralphlipe/Documents/GitHub/swift-contract-bridge/Sources/ContractBridge/
-TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/src/
+TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/packages/ts-contractbridge/src/
+(moved here 2026-08 when the repo became an npm workspace — see "Workspace restructuring" below;
+was a flat repo-root src/ before that.)
 
 ## Already ported (19 types)
 - MatchpointCalculator + MatchpointedOutcome → matchpointCalculator.ts / matchpointedOutcome.ts.
@@ -572,3 +574,86 @@ means "gets a class."
 
 **Why (porting order):** User is porting one type at a time; Swift project is the authoritative reference.
 **How to apply (porting order):** When user asks to port the next type, read the corresponding Swift file first, then implement using the existing TS type-alias+const-object pattern (except Game/Document, see above).
+
+## Workspace restructuring: npm workspace + contractbridge-react + apps/pbn-viewer (2026-08)
+**Why:** Ralph is building two React apps against this library — a PBN Viewer test app now, and
+eventually a rich, interactive PBN editor. Rather than write the viewer's rendering as one-off app
+code and rewrite it for the editor, this mirrors the split already proven in
+`swift-contract-bridge` (`ContractBridge` core + `ContractBridgeUI` reusable views): a
+framework-coupled middle layer of presentational React components that any app built on this
+library can share. Ralph explicitly chose to scaffold the whole shape now, before writing any
+viewer feature code, rather than build the viewer standalone and extract a shared package later.
+
+**Repo converted to an npm workspace** (plain npm, no pnpm/yarn — npm workspaces, native since v7,
+were already sufficient). Layout:
+- Root `package.json` — `"private": true`, `"workspaces": ["packages/*", "apps/*"]`, no code of its
+  own; a few passthrough scripts (`npm test`/`npm run build`/`npm run typecheck` at the root target
+  `packages/ts-contractbridge`; `npm run dev:viewer` targets `apps/pbn-viewer`).
+- Root `tsconfig.base.json` — the strict compiler options every package shares (`strict`,
+  `noUncheckedIndexedAccess`, `noImplicitOverride`, `exactOptionalPropertyTypes`, `esModuleInterop`,
+  `forceConsistentCasingInFileNames`, `skipLibCheck`, `target: ES2022`). Every package's own
+  `tsconfig.json` `extends` this and adds only what's package-specific.
+- **`packages/ts-contractbridge/`** — the existing library, moved here via `git mv` with every
+  internal relative path preserved exactly (`src/`, `tests/`, `test-data/`, `tsconfig.json`,
+  `vitest.config.ts`, `package.json` all moved together, so e.g.
+  `tests/pbn/pbnDocument.test.ts`'s `../../test-data/...` reference needed no change). Package name
+  stays `ts-contractbridge`, version stays `0.1.0`. All 370 tests, `tsc --noEmit`, and `npm run build`
+  confirmed clean in the new location, matching pre-move behavior exactly.
+- **`packages/contractbridge-react/`** (new) — presentational React component library, package name
+  `contractbridge-react`, `"private": true` (not published). Depends on `ts-contractbridge` via
+  plain semver range (npm workspaces auto-link by package name — no `workspace:` protocol needed,
+  unlike pnpm/yarn). Declares `react`/`react-dom` as `peerDependencies` (+ matching `devDependencies`
+  for local typechecking), not direct dependencies — the consuming app supplies its own React.
+  **Deliberately has no build step**: `"main"`/`"types"` point straight at `src/index.ts`; Vite in
+  the consuming app transpiles the TS/TSX source on the fly. This is the standard pattern for a
+  workspace-internal package still evolving alongside its one consumer — a real bundled build can
+  be added later if/when this package is ever published standalone.
+  **Component boundary, important for future work:** this package holds *presentational* components
+  that take domain types (`Deal`, `PBNAuction`, `Contract`, etc.) as props and emit callbacks for
+  interaction (`onCallSelected`, etc.) — no document/undo-redo/file-I/O state of its own. That
+  state stays at the app level (viewer today, editor later). The editor payoff of this boundary:
+  a component like a future `AuctionTable` can take an `editable`/`onCallEntered` prop so the viewer
+  renders it read-only and the editor renders the *same* component with editing on — one component,
+  not two.
+  **First (and so far only) component: `SuitSymbol`** (`src/SuitSymbol.tsx`) — renders one suit
+  glyph (`Suit.symbol(suit)`) colored red for H/D, black for S/C (standard bridge convention),
+  overridable via an optional `color` prop. Deliberately the smallest genuinely-reusable building
+  block (something a future card fan or hand diagram will actually compose), not a throwaway
+  placeholder — but also deliberately NOT a first pass at `HandDiagram`/`AuctionTable`/etc.; those
+  remain separate, not-yet-started next steps, to be scoped individually per Ralph's established
+  "one piece at a time" preference.
+  **React 19 / JSX namespace gotcha hit and fixed:** with React 19's `@types/react` + `"jsx":
+  "react-jsx"`, a bare `JSX.Element` return type fails with `Cannot find namespace 'JSX'` — React 19
+  no longer puts a global ambient `JSX` namespace in scope by default. Fix: `import type { JSX }
+  from 'react'` explicitly in any file using `JSX.Element` as a return type. Hit this in both
+  `SuitSymbol.tsx` and `App.tsx`; worth remembering for every future component file in this package
+  and in `pbn-viewer`.
+- **`apps/pbn-viewer/`** (new) — package name `pbn-viewer`, `"private": true`. Hand-written (not
+  `create-vite`-wizarded, to keep it non-interactive and consistent with the rest of this repo)
+  Vite + React + TS app shell: `vite.config.ts` (`@vitejs/plugin-react`), `index.html`,
+  `src/main.tsx` (mounts `<App />` via `createRoot`), `src/App.tsx` (currently just the workspace
+  wiring proof-of-life below — no PBN-loading or hand-record-rendering logic yet, that's the next
+  step). `tsconfig.json` uses `"moduleResolution": "Bundler"` + `"jsx": "react-jsx"`, distinct from
+  `packages/ts-contractbridge`'s `"Node16"` (each package's tsconfig is independent; only the shared
+  strict options come from `tsconfig.base.json`).
+  **Verified end-to-end, not just "files exist":** `npm install` at the repo root resolved the
+  workspace links (`contractbridge-react` → `ts-contractbridge`, `pbn-viewer` → both); `npx tsc
+  --noEmit` clean in all three packages; `npm run dev --workspace=apps/pbn-viewer` (via
+  `.claude/launch.json`'s `"pbn-viewer"` config, port 5173) actually started Vite and rendered the
+  page in the browser tool — confirmed via screenshot: heading, description text, and all four
+  `SuitSymbol` glyphs rendered (♥/♦ visibly red). `npm run build --workspace=apps/pbn-viewer` (which
+  runs `tsc --noEmit && vite build`) also succeeded, producing a real production bundle. This is
+  genuine proof the cross-package resolution and bundling work, not just that the file tree is
+  correctly shaped.
+- **`.claude/launch.json`** (new, tracked in git — this is shared project dev-server config, unlike
+  `.claude/settings.local.json` which stays gitignored as user-local permission-cache state) —
+  defines the `"pbn-viewer"` launch config (`npm run dev --workspace=apps/pbn-viewer`, port 5173)
+  used by the browser preview tool.
+
+**Explicitly out of scope for this restructuring step** (per Ralph's plan approval — don't assume
+more was built than this): no `HandDiagram`/`AuctionTable`/`ContractDisplay`/`DoubleDummyTable`/
+`BiddingBox` components yet; no PBN file loading, game list, or hand-record rendering in
+`pbn-viewer` yet; no build/bundling pipeline for `contractbridge-react` (source-only for now); no
+`apps/pbn-editor` — not started. **How to apply:** don't jump ahead and build real display
+components or viewer features without Ralph scoping that as its own step, same discipline as every
+other feature in this project.

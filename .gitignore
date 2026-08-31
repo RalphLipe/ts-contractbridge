@@ -10,6 +10,9 @@ coverage/
 # TypeScript cache
 *.tsbuildinfo
 
+# Claude Code local/user-specific config (launch.json is project config and stays tracked)
+.claude/settings.local.json
+
 # Editor / OS
 .DS_Store
 .vscode/*
