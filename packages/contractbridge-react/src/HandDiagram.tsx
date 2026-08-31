@@ -19,7 +19,16 @@ const ranksText = (hand: Hand, suit: Suit): string => {
 // (via Deal.cardsInSuit). Just a display of a Hand — no selection/editing, that's a later step.
 export function HandDiagram({ hand }: HandDiagramProps): JSX.Element {
   return (
-    <div style={{ fontFamily: 'monospace', fontSize: '1rem', lineHeight: 1.7 }}>
+    <div
+      style={{
+        fontFamily: 'monospace',
+        fontSize: '1rem',
+        lineHeight: 1.2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.15em',
+      }}
+    >
       {Suit.all.map(suit => (
         <div key={suit} style={{ display: 'flex', gap: '0.5em' }}>
           <span style={{ display: 'inline-block', width: '1em' }}>

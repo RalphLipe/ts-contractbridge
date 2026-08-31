@@ -852,3 +852,83 @@ Pass/2♦¹ (row 3) — confirmed via the browser tool, both as page text and sc
   with `resize_window`'s dark-mode emulation that the suit glyph inside a bid cell (♦) and the
   black-suit glyphs stay correctly themed, since `AuctionTable` only composes `SuitSymbol` rather
   than setting any color itself.
+
+## Tightened hand-diagram vertical spacing (2026-08)
+**Bug, reported by Ralph:** the suit rows within a hand were spaced far apart — too much white
+space overall in the deal display. Root cause: `HandDiagram` controlled row spacing via
+`lineHeight: 1.7` on the outer container rather than an explicit gap between the row `<div>`s —
+line-height at that multiplier inflates each row's box well beyond what's needed for legible
+monospace text, and it compounds with `DealDiagram`'s own `1rem` grid gap between hands to make the
+whole diagram feel sprawling.
+**Fix:**
+- **`HandDiagram.tsx`** — outer container is now `display: 'flex', flexDirection: 'column', gap:
+  '0.15em'` with `lineHeight: 1.2` (normal text line-height, no longer doing double duty as the
+  primary row-spacing mechanism). Explicit `gap` between rows is a more direct, predictable lever
+  for "space between suit rows" than line-height ever was.
+- **`DealDiagram.tsx`** — grid `gap` reduced from `1rem` to `0.5rem` (spacing *between* the four
+  hands, a separate lever from `HandDiagram`'s own internal row spacing).
+- **`AuctionTable.tsx`** deliberately left untouched — its cell padding (`0.15em 0.75em`) was
+  already tight and wasn't part of what Ralph flagged.
+**Verified visually, not just by CSS inspection:** loaded the same `Responder Rebid.pbn` fixture via
+the browser tool and confirmed the whole deal (all four hands) plus the auction table and note now
+fit in noticeably less vertical space, with suit rows reading as a tight, legible block rather than
+spread out.
+**How to apply going forward:** prefer an explicit flex/grid `gap` over `lineHeight` as the
+mechanism for spacing between sibling block-level rows in any future `contractbridge-react`
+component — `lineHeight` should only govern actual text line height, not double as layout spacing.
+
+## `DealDiagram`: rounded HCP box, all four hands (2026-08, superseded a same-day first attempt)
+**`packages/contractbridge-react/src/DealDiagram.tsx`** — a rounded square box in the grid's
+(previously empty) center cell, sized to exactly match the height of the West/East column it sits
+between, showing **all four hands'** HCP (not just West/East), each positioned toward its own
+compass direction inside the box: North's count near the top, West's near the left, East's near
+the right, South's near the bottom — via a 3×3 inner grid (`hcpCellStyle`) mirroring the outer
+compass layout's own positions.
+- **First attempt (same day) only showed West/East, in a small fixed-size flex box, and was wrong**
+  — Ralph corrected it: every hand needed its HCP shown (North/South included), and the box needed
+  to match the West/East hands' actual height, not an arbitrary constant. Rebuilt rather than
+  patched, since both the content (2 numbers → 4) and the sizing mechanism (fixed em constant →
+  dynamically matching row height) needed to change.
+- **Sizing: `alignSelf: 'stretch'` + `aspectRatio: '1 / 1'`**, not a hardcoded em value — the box
+  stretches to fill its grid row's height (which the browser sets from the *tallest* cell in that
+  row, i.e. whichever of West/East's label+`HandDiagram` is taller), then `aspect-ratio` keeps it
+  square by matching width to that same height. **Verified pixel-perfect, not just "looks close,"**
+  via `getBoundingClientRect()` in the browser tool: box and the West column both measured
+  106.98×106.98 for height and top/bottom position, exactly aligned — confirming this CSS approach
+  (rather than a guessed fixed size) genuinely tracks the hands' real rendered height.
+- **`hcpText(hand)`** unchanged from the first attempt — `Deal.hcp(hand)` if `hand.size > 0`, else
+  `''`. Still checks `hand.size === 0` (empty/not-yet-dealt), NOT "computed HCP === 0" — a real
+  13-card hand with zero honors must still show `0`; only a genuinely empty hand shows nothing.
+- **Rounded corners** (`borderRadius: '12%'`, a Ralph request marked "would be great," not required)
+  — a percentage so the rounding scales with the box's own size rather than a fixed px value that
+  would look disproportionate if the box's size ever changes (e.g. a larger font-size app).
+- **Border and text both use `currentColor`** (no explicit hex), so the box adapts to light/dark
+  automatically without needing its own `--cb-*` token — same pattern this module has followed
+  since the dark-mode fix earlier.
+**Verified via the browser tool, three cases:** a full deal (10 HCP each) shows all four "10"s
+correctly positioned per direction; the void-hand fixture (only North dealt, 13 HCP; W/E/S all
+empty) shows North's `13` with the other three positions genuinely blank, not `0`; both re-confirmed
+under `resize_window`'s dark-mode emulation.
+**How to apply going forward:** when a Ralph-requested visual doesn't match what he actually wanted
+even though it does what was literally asked, rebuild cleanly rather than patch around the wrong
+design — this box's content model (2 numbers vs. 4) and sizing model (fixed constant vs. dynamic
+stretch) both changed, so patching the first version in place would have been messier than starting
+from the corrected requirements.
+
+**Direction-name labels removed directly by Ralph (2026-08, edited the file himself, not via me):**
+the bold "North"/"East"/"South"/"West" text above each hand in `DealDiagram.tsx` is gone — each
+compass cell now holds just the bare `<HandDiagram hand={deal.hands[dir]} />`, no label wrapper.
+Asked to confirm "everything still works" after this edit, since I hadn't made it myself:
+- `tsc --noEmit` clean in `contractbridge-react` and `pbn-viewer` — `Direction` stays validly
+  imported/used (`Direction.all` still drives both the compass loop and the HCP box's inner loop;
+  `Direction.name` simply isn't called anywhere in this file anymore, not an unused-import error
+  since `Direction` the import itself is still very much used).
+- **The HCP box's `alignSelf: 'stretch'` + `aspectRatio: '1/1'` sizing adapted automatically, no
+  code change needed** — re-measured via `getBoundingClientRect()`: box shrank from 106.98px to
+  83.98px square (matching the West column's new, shorter height now that its label is gone),
+  confirming this CSS mechanism really does track whatever the row's actual content height is,
+  rather than assuming a label would always be present.
+- Re-verified end-to-end via the browser tool: full-deal + void-hand HCP display, the auction table
+  (including notes and game-switching) via a real fixture, and both light/dark themes — all still
+  correct after the label removal. 370 core tests, full workspace typecheck, and the `pbn-viewer`
+  production build all still clean.
