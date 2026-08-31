@@ -71,7 +71,9 @@ export function DealDiagram({ deal }: DealDiagramProps): JSX.Element {
           gridTemplateRows: 'repeat(3, 1fr)',
           padding: '0.2em 0.35em',
           fontFamily: 'monospace',
-          fontSize: '1rem',
+          // Deliberately smaller than the surrounding 1rem hand text — these are a secondary,
+          // supporting detail, not something that should compete visually with the cards.
+          fontSize: '0.75rem',
         }}
       >
         {Direction.all.map(dir => (

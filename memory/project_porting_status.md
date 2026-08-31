@@ -932,3 +932,22 @@ Asked to confirm "everything still works" after this edit, since I hadn't made i
   (including notes and game-switching) via a real fixture, and both light/dark themes — all still
   correct after the label removal. 370 core tests, full workspace typecheck, and the `pbn-viewer`
   production build all still clean.
+
+**HCP box font size reduced (2026-08).** Ralph: the HCP numbers were too visually prominent, and
+asked whether React has a SwiftUI-style named type-scale concept (`.footnote`, `.title`, etc. —
+SwiftUI's Dynamic Type). **It doesn't** — there's no built-in relative-size-step primitive in
+React/CSS the way there is in SwiftUI (that comes from iOS's OS-level Dynamic Type system, not
+SwiftUI itself, and has no web equivalent); you just pick a concrete size. Set the HCP box's
+`fontSize` to `0.75rem` (was `1rem`, inherited implicitly) — 75% of the surrounding hand text, small
+enough to read as a secondary detail rather than competing with the cards. The box's own dimensions
+are unaffected (still driven by `alignSelf: 'stretch'` + `aspectRatio: '1/1'` off the row's height,
+not by this element's font-size), and the padding (`0.2em`/`0.35em`, relative to the box's own font)
+shrank proportionally too, which read fine visually — no further adjustment needed. Verified in both
+themes via the browser tool.
+
+**`HandDiagram`: tightened suit-symbol-to-ranks gap (2026-08).** Each suit row's `<div style={{
+display: 'flex', gap: ... }}>` (the fixed-width `1em` suit-symbol span + the ranks span) had
+`gap: '0.5em'` between them — reduced to `0.2em`. The fixed-width `1em` wrapper around the suit
+glyph (for column alignment across rows regardless of glyph width) is untouched, so ranks still line
+up cleanly; only the space between the glyph and its ranks shrank. Verified in both themes via the
+browser tool.

@@ -30,7 +30,7 @@ export function HandDiagram({ hand }: HandDiagramProps): JSX.Element {
       }}
     >
       {Suit.all.map(suit => (
-        <div key={suit} style={{ display: 'flex', gap: '0.5em' }}>
+        <div key={suit} style={{ display: 'flex', gap: '0.2em' }}>
           <span style={{ display: 'inline-block', width: '1em' }}>
             <SuitSymbol suit={suit} />
           </span>
