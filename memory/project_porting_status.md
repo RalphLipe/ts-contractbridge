@@ -752,3 +752,31 @@ unchanged from before (♠/♣ black, ♥/♦ red on white).
 color must go through a `--cb-*` custom property with a sane light-mode fallback (never a bare
 hardcoded color), and any new app built on this library needs its own equivalent of
 `index.css`/`color-scheme` — don't assume a browser's default rendering is theme-safe.
+
+## `DealDiagram` — multi-hand compass layout (2026-08)
+**`packages/contractbridge-react/src/DealDiagram.tsx`** — Ralph's second requested display
+component: all four hands from a `Deal` (`{ dealer: Direction, hands: Hands }`, from
+`ts-contractbridge`), arranged in the standard compass layout (North top-center, West/East either
+side, South bottom-center, center cell empty). Ralph considered calling this `HandRecordDiagram`
+then settled on `DealDiagram` — takes a `Deal` directly as its only prop, not a `Hands` record or
+four separate hand props.
+- **Composes `HandDiagram`** for each of the four hands (one `<HandDiagram hand={deal.hands[dir]}
+  />` per direction) rather than reimplementing per-suit rendering — same reuse principle as
+  `HandDiagram` composing `SuitSymbol`.
+- **Layout via CSS Grid**, one `<div>` per direction placed by explicit `gridColumn`/`gridRow` (not
+  by DOM order) in a 3×3 grid, with a bold direction-name label (`Direction.name(dir)`, e.g.
+  "North") above each hand. `Direction.all`'s iteration order is just convenient here (used only to
+  loop over the four cells), not what determines layout — the per-direction `cellStyle` map is what
+  actually places North/West/East/South correctly.
+- **No dealer/vulnerability decoration yet** (e.g. highlighting whose turn it is to deal) and no
+  selection/editing — purely a static display of a `Deal`, matching the established
+  `contractbridge-react` component boundary. Flagged as a natural future addition, not done now.
+- **Verified visually in both themes**, same method as `HandDiagram`: wired into
+  `apps/pbn-viewer/src/App.tsx` with the same sample deal used throughout this project's tests,
+  screenshotted via the browser tool in both light and dark (via `resize_window`'s `colorScheme`
+  emulation) — all four hands render in the correct compass positions with correct suit content in
+  both themes; the dark-mode `--cb-suit-*` theming from the previous fix carries over correctly
+  since `DealDiagram` only composes existing themed components, it doesn't set any colors itself.
+**Still not built:** `AuctionTable`, `ContractDisplay`, `DoubleDummyTable`, `BiddingBox`, any
+PBN-loading in `pbn-viewer` (the sample deal is still hardcoded in `App.tsx`) — each a separate,
+not-yet-scoped next step.
