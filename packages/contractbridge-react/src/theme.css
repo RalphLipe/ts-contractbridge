@@ -1,0 +1,14 @@
+/* Default color tokens for contractbridge-react components. A consuming app can override any of
+   these custom properties (e.g. redefine --cb-suit-black under its own theme system) — components
+   only ever reference them with a fallback, they never assume this file was imported. */
+:root {
+  --cb-suit-black: #1a1a1a;
+  --cb-suit-red: #c62828;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cb-suit-black: #e8e8e8;
+    --cb-suit-red: #ef5350;
+  }
+}

@@ -657,3 +657,98 @@ more was built than this): no `HandDiagram`/`AuctionTable`/`ContractDisplay`/`Do
 `apps/pbn-editor` — not started. **How to apply:** don't jump ahead and build real display
 components or viewer features without Ralph scoping that as its own step, same discipline as every
 other feature in this project.
+
+**Important workflow gotcha, hit right after the restructuring above: `packages/ts-contractbridge`'s
+`dist/` is a real runtime dependency of the other two workspace packages, not just a build
+artifact.** `contractbridge-react`/`pbn-viewer` depend on `ts-contractbridge` via its `package.json`
+`main`/`types` fields, which point at `./dist/index.cjs` / `./dist/index.d.ts` — npm workspace
+linking resolves that through a real `node_modules` symlink to the package folder, but the fields
+inside still point at `dist`. Deleting `packages/ts-contractbridge/dist/` (e.g. as a "clean up the
+build artifact" step, which is normally the right instinct since it's gitignored) breaks
+`tsc --noEmit` in BOTH downstream packages immediately with `Cannot find module 'ts-contractbridge'
+or its corresponding type declarations'` — hit exactly this right after building `HandDiagram`.
+**How to apply:** don't reflexively `rm -rf` a package's `dist/` once other workspace packages
+depend on it — rebuild it (`npm run build --workspace=packages/ts-contractbridge`) instead of
+deleting-and-leaving-it-gone, and lean towards just leaving a freshly-built `dist/` in place between
+work sessions rather than cleaning it up as a matter of habit. **Open question for later, not yet
+decided:** whether `contractbridge-react`/`pbn-viewer` should instead resolve `ts-contractbridge`
+straight from its `src/` during development (bypassing `dist` entirely, the way
+`contractbridge-react` itself already ships source-only) — would remove this friction for a library
+that's evolving as fast as this one is, at the cost of some resolution-config complexity. Not worth
+solving until it's actually annoying in practice.
+
+## `HandDiagram` — first real display component (2026-08)
+**`packages/contractbridge-react/src/HandDiagram.tsx`** — Ralph's first requested display
+component: a single hand, one row per suit, in standard hand-record order (Spades, Hearts,
+Diamonds, Clubs). Takes a `Hand` (`ReadonlySet<Card>`, from `ts-contractbridge`) as its only prop —
+purely presentational, no selection/editing, matching the `contractbridge-react` component boundary
+established above.
+- **Suit order comes for free from `Suit.all`** (`['S','H','D','C']`) — already in the exact order
+  Ralph asked for, so `HandDiagram` just maps over it directly rather than hardcoding its own order.
+- **Reuses existing library logic rather than reimplementing it:** `Deal.cardsInSuit(hand, suit)`
+  (already existed in `deal.ts`, not previously used anywhere in `src/`) returns a hand's cards in
+  one suit already sorted high-to-low — exactly what's needed per row, so `HandDiagram` doesn't sort
+  anything itself, just maps each card to `Card.rank(card)` and joins the letters (e.g. `AKQ`, using
+  `T` for Ten per the existing `Rank` convention, not `10`).
+  A void suit renders as an em dash (`—`) rather than a blank line, matching standard hand-record
+  convention (a blank row could look like missing data rather than "no cards here").
+- **Composes `SuitSymbol`** (not a new copy of suit-glyph logic) for each row's suit symbol —
+  confirms the payoff of building `SuitSymbol` as a genuinely reusable atom rather than a throwaway
+  first component.
+- **Verified visually, not just by typecheck:** wired into `apps/pbn-viewer/src/App.tsx` with a
+  real sample hand (North's hand from the same sample deal string used throughout this project's
+  tests) and confirmed via the browser tool/screenshot — `♠ AKQ`, `♥ JT9` (red), `♦ 876` (red),
+  `♣ 5432`, exactly the expected order and content.
+- **No test harness for `contractbridge-react` yet** (no vitest/`@testing-library/react`/jsdom set
+  up in that package) — components have been verified by visual render in the browser tool instead.
+  Flagged to Ralph, not yet decided: worth adding a real component-test setup once component logic
+  gets non-trivial (e.g. once editability/interaction is added), given how strongly this project has
+  otherwise valued test coverage everywhere else.
+**Still not built:** `AuctionTable`, `ContractDisplay`, `DoubleDummyTable`, `BiddingBox`, a
+multi-hand/board layout (N/E/S/W together), any PBN-loading in `pbn-viewer` — each a separate,
+not-yet-scoped next step.
+
+## Dark-mode bug: `SuitSymbol`'s hardcoded black was invisible on a dark background (2026-08)
+**Bug, reported by Ralph:** running in dark mode (his real day-to-day setup, not a one-off), only
+the diamond/heart were visible — spades/clubs disappeared entirely. Root cause: `SuitSymbol`'s
+"black" suit color was a hardcoded near-black hex (`#1a1a1a`), and `pbn-viewer` itself declared no
+light/dark theme at all (no `color-scheme`, no explicit background/text color) — so whatever
+background happened to render (the browser's own dark-mode handling, an OS/browser force-dark
+feature, or just this project's dark preview pane) showed near-black text on a near-black
+background. Red (an explicit, distinctly-hued color) stayed visible regardless, so only S/C broke.
+
+**Fix — deliberate theming, not a one-off color tweak, since this is meant to be reused by every
+future app built on `contractbridge-react`:**
+- **`packages/contractbridge-react/src/theme.css`** (new) — defines `--cb-suit-black`/
+  `--cb-suit-red` custom properties at `:root`, with a `@media (prefers-color-scheme: dark)`
+  override (light gray / brighter red in dark mode). Consuming apps can redefine either token for
+  their own branding; nothing requires them to.
+- **`SuitSymbol.tsx`** now reads `var(--cb-suit-black, #1a1a1a)` / `var(--cb-suit-red, #c62828)`
+  instead of a bare hex, and imports `./theme.css` itself as a side effect — so any app that uses
+  `SuitSymbol` (or anything built on it, like `HandDiagram`) gets correct light/dark suit colors
+  automatically, without having to remember a separate CSS import. The hex fallback inside `var()`
+  only matters if `theme.css` somehow isn't loaded at all (bypassed bundler, etc.) — normal usage
+  always gets the CSS-variable value.
+- **`packages/contractbridge-react/src/global.d.ts`** (new) — `declare module '*.css'`, needed for
+  TS to resolve the side-effect `./theme.css` import. Deliberately a manual ambient declaration
+  rather than depending on `vite/client`'s types — this package doesn't depend on any particular
+  bundler (unlike `pbn-viewer`, which legitimately does).
+- **`apps/pbn-viewer/src/index.css`** (new, imported once from `main.tsx`) — the app's *own* theme,
+  a separate concern from the component library's: `color-scheme: light dark` on `:root` (tells the
+  browser the page handles light/dark itself, which also suppresses any browser-level auto-dark
+  "invert unstyled pages" heuristic that may have contributed to the original bug) plus explicit
+  `body` background/text color pairs for light and dark. **Component-library tokens vs. app theme
+  stay separate on purpose:** `contractbridge-react` only owns suit-color tokens; page-level
+  background/text/layout theming is each app's own responsibility, not something the component
+  library should dictate.
+- **`apps/pbn-viewer/tsconfig.json`** gained `"types": ["vite/client"]` — needed to resolve the
+  app's own `./index.css` side-effect import, and something the original scaffold should have
+  included from the start for any Vite+TS app (also gives `import.meta.env` types for free).
+**Verified in both themes, not just "looks plausible":** used the browser tool's `resize_window`
+`colorScheme` emulation to force `dark` then `light` and re-screenshotted both — dark mode now shows
+all four suits clearly (♠/♣ light gray, ♥/♦ red) against the app's dark background; light mode is
+unchanged from before (♠/♣ black, ♥/♦ red on white).
+**How to apply going forward:** every future `contractbridge-react` component that sets its own
+color must go through a `--cb-*` custom property with a sane light-mode fallback (never a bare
+hardcoded color), and any new app built on this library needs its own equivalent of
+`index.css`/`color-scheme` — don't assume a browser's default rendering is theme-safe.

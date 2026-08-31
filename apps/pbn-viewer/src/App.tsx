@@ -1,20 +1,20 @@
 import type { JSX } from 'react'
-import { Suit } from 'ts-contractbridge'
-import { SuitSymbol } from 'contractbridge-react'
+import { Deal } from 'ts-contractbridge'
+import type { Hand } from 'ts-contractbridge'
+import { HandDiagram } from 'contractbridge-react'
 
-// Workspace wiring proof-of-life: renders a real component from contractbridge-react, which
-// itself imports a real type from ts-contractbridge — proving the whole chain resolves (types and
-// bundling) before any actual PBN-loading/viewing feature is built.
+// A sample North hand, just to have something real to render.
+const sampleDeal = Deal.fromPBN(
+  'N:AKQ.JT9.876.5432 JT9.AKQ.5432.876 876.5432.AKQ.JT9 5432.876.JT9.AKQ'
+)
+const sampleHand: Hand = 'hands' in sampleDeal ? sampleDeal.hands['N'] : new Set()
+
 export function App(): JSX.Element {
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>
       <h1>PBN Viewer</h1>
-      <p>Workspace wiring check — one glyph per suit, via contractbridge-react:</p>
-      <p style={{ fontSize: '2rem' }}>
-        {Suit.all.map(suit => (
-          <SuitSymbol key={suit} suit={suit} />
-        ))}
-      </p>
+      <p>North's hand:</p>
+      <HandDiagram hand={sampleHand} />
     </main>
   )
 }

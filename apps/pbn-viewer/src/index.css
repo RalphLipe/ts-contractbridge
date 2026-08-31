@@ -1,0 +1,19 @@
+/* Deliberate light/dark theme, rather than leaving the page unstyled and at the mercy of the
+   browser's own auto-dark heuristics (which is what produced invisible black suit symbols on a
+   dark background before this fix). */
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #121212;
+    color: #e8e8e8;
+  }
+}
