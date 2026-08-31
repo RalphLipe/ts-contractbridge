@@ -780,3 +780,35 @@ four separate hand props.
 **Still not built:** `AuctionTable`, `ContractDisplay`, `DoubleDummyTable`, `BiddingBox`, any
 PBN-loading in `pbn-viewer` (the sample deal is still hardcoded in `App.tsx`) — each a separate,
 not-yet-scoped next step.
+
+## Real PBN file loading in `apps/pbn-viewer` (2026-08)
+**`apps/pbn-viewer/src/App.tsx`** rewritten from the hardcoded sample deal to genuine file loading:
+a plain `<input type="file" accept=".pbn,text/plain">`, read via `File.text()` (no upload, no
+server — 100% client-side, matching Ralph's original requirement for this app), parsed with
+`PBNDocument.fromPBN`. State lives in the app (`doc`/`selectedIndex`/`error` via `useState`), not in
+`contractbridge-react` — matches the established component-library boundary (presentational
+components only; document/selection state stays app-level).
+- A `<select>` lists every game in the loaded document, labeled `Board ${n}` (falling back to
+  `index + 1` if there's no `Board` tag) plus `— Dealer ${name}` if there's a `Dealer` tag — reuses
+  `PBNGame.getBoard()`/`getDealer()` and `Direction.name()` directly, no new parsing logic.
+- Selecting a game calls `PBNGame.getDeal()` and renders it via `DealDiagram` if present, or a
+  plain "no Deal tag" message otherwise (a game with an Auction section but no play/deal isn't
+  malformed, just has nothing for `DealDiagram` to show yet).
+- `PBNDocument.fromPBN` never throws (per its own design — always returns a document, even from
+  malformed/empty input), so the only real failure mode handled is "the file parsed to zero games"
+  (shown as an error message) plus a defensive `try`/`catch` around `file.text()` itself.
+**Verified against a real multi-game file, not just typecheck** — since the sandboxed browser
+tool's `computer` action has no native "pick a file from disk" primitive, verification used
+`javascript_tool` to construct a real `File` from `test-data/Responder Rebid.pbn`'s actual contents
+(a genuinely tricky fixture: two games sharing one `Deal` tag where only North's hand is populated
+and S/E/W are all void, plus the `{...}` comment block and `[Note]` tag from earlier
+`PBNAuction`/`parseSectionLines` work) and dispatch a real `change` event on the `<input>` — this is
+event simulation to verify already-written app code, not using JS to implement the UI itself. Result
+confirmed correct: filename shown, game selector reads "Board 1 — Dealer South" / "Board 2 — Dealer
+South", North's hand renders correctly (`♠ JT653 ♥ A3 ♦ AKJT5 ♣ 8`), and S/W/E each render as four
+em dashes (the void-hand path). Switching the `<select>` to game 2 correctly re-rendered the second
+game's deal. An empty file correctly showed "No games found in this file." No console errors beyond
+the known-harmless Vite HMR WebSocket noise this preview harness always produces.
+**Not yet built:** no Auction/contract/result display (still just the deal), no drag-and-drop file
+input (click-to-browse only), no persisting the loaded file across a page reload — each a separate,
+not-yet-scoped next step.
