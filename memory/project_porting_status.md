@@ -812,3 +812,43 @@ the known-harmless Vite HMR WebSocket noise this preview harness always produces
 **Not yet built:** no Auction/contract/result display (still just the deal), no drag-and-drop file
 input (click-to-browse only), no persisting the loaded file across a page reload — each a separate,
 not-yet-scoped next step.
+
+## `AuctionTable` — the standard W/N/E/S auction display (2026-08)
+**`packages/contractbridge-react/src/AuctionTable.tsx`** — Ralph's third requested display
+component: a standard 4-column auction table, columns fixed regardless of dealer — the dealer's
+calls just start partway through the first row (leading blank cells before their column), matching
+how `PBNAuction.toPBNSection` already groups calls 4-per-line. Takes a `PBNAuction` directly as its
+only prop.
+**Column order is `['W', 'N', 'E', 'S']`, a local `auctionColumns` constant — NOT `Direction.all`**
+(which is `['N','E','S','W']`, clockwise from North). First built with `Direction.all` and shipped
+that way; Ralph caught it immediately: standard bridge hand records put West first (leftmost),
+matching the compass diagram's West-on-the-left placement, so West's calls read left-to-right
+first too. **Why the fix was a one-line column-order swap, not a logic rewrite:** `['W','N','E','S']`
+is *itself* a valid clockwise-from-West rotation (the same direction actual play always proceeds
+in), so the existing "count blanks to the dealer's column index, then chunk the call sequence into
+rows of 4" logic still works unchanged against the new column array — only `Direction.all` needed
+replacing with `auctionColumns` everywhere in the file (header row, leading-blanks calculation, per-
+row cell lookup). Re-verified against the same real fixture: header now reads "West North East
+South", and South-dealt calls now land as blank/blank/blank/1♣ (row 1), Pass/1♠/Pass/1NT (row 2),
+Pass/2♦¹ (row 3) — confirmed via the browser tool, both as page text and screenshot.
+- **Cell content composes existing pieces rather than reimplementing bid formatting:** `Bid.level`/
+  `Bid.strain` + `Strain.toSuit` decide whether a bid's strain is a suit (rendered via `SuitSymbol`,
+  so it gets the same red/black theming as everywhere else) or no-trump (literal `"NT"` text);
+  `Pass`/`X`/`XX` render as-is. No new "how does a call look" logic duplicated anywhere.
+- **Notes**: a call with a `note` shows its `noteNumber` as a superscript in its cell; every noted
+  call is collected into a numbered list (`<ol>`, `value={noteNumber}`) below the table — mirrors
+  how PBN itself represents the `=N=` marker + trailing `[Note "N:text"]` line, just rendered
+  instead of parsed.
+- **Not shown yet, deliberately:** NAGs (`PBNAuctionCall.nags`) aren't rendered at all in this first
+  pass — flagged as a clear next addition, not forgotten. No bidding-box/editing here either,
+  matching the established component boundary (presentational only).
+- **Wired into `apps/pbn-viewer/src/App.tsx`** alongside `DealDiagram`, via the already-existing
+  `PBNGame.getAuction()`.
+- **Verified against real content, both cells and notes, in both themes:** loaded
+  `test-data/Responder Rebid.pbn`'s second game (the same real fixture used for
+  `PBNAuction`/`parseSectionLines` work earlier) via the browser tool and confirmed: correct 2
+  leading blanks before South's column (dealer), `1♣`/`Pass` on row 1, `1♠`/`Pass`/`1NT`/`Pass` on
+  row 2, `2♦¹` alone on row 3 with the note "1. New minor forcing" listed below — and re-confirmed
+  with `resize_window`'s dark-mode emulation that the suit glyph inside a bid cell (♦) and the
+  black-suit glyphs stay correctly themed, since `AuctionTable` only composes `SuitSymbol` rather
+  than setting any color itself.
