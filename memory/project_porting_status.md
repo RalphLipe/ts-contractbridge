@@ -951,3 +951,43 @@ display: 'flex', gap: ... }}>` (the fixed-width `1em` suit-symbol span + the ran
 glyph (for column alignment across rows regardless of glyph width) is untouched, so ranks still line
 up cleanly; only the space between the glyph and its ranks shrank. Verified in both themes via the
 browser tool.
+
+## Live test deploy: bigdealbridge.com/pbnviewer/ (2026-09)
+**Ralph owns `bigdealbridge.com`, already hosted via GitHub Pages from a SEPARATE repo,
+`RalphLipe/bigdealbridge-website`** (public, main branch, root path, legacy Jekyll build, custom
+domain + HTTPS already fully provisioned — cert valid through 2026-11-17, no DNS work was needed).
+That repo is Big Deal Bridge LLC's real public marketing site, with existing pages (`faq/`,
+`handsee/`, `larryco/`, `library/`, `support/`, etc.) — **`handsee/index.html` was found to be
+existing precedent** for exactly this pattern (a bare subfolder for one app, not linked from the
+main nav). `_config.yml` only excludes `README.md`, nothing else — safe for a new subfolder, no
+Jekyll interference expected (confirmed: no console errors, works identically to local).
+**Deployed the viewer as an end-to-end deployment test, explicitly NOT for public consumption yet**
+(reachable only by direct URL, not linked from the site's nav):
+- **`apps/pbn-viewer/vite.config.ts`** — `base` is now command-conditional:
+  `command === 'build' ? '/pbnviewer/' : '/'`. Only `vite build`'s output needs the subpath baked
+  into asset URLs; `vite dev` stays at `base: '/'` so local dev (`.claude/launch.json`'s
+  `"pbn-viewer"` config, `http://localhost:5173/`) is completely unaffected. **Important for any
+  future deploy-affecting change:** don't set a bare top-level `base: '/pbnviewer/'` — that would
+  break local dev by making `http://localhost:5173/` 404.
+- **Mechanics (manual one-off, not CI — deliberately, per Ralph's "just a test" framing):** shallow
+  `gh repo clone` of `bigdealbridge-website` into the scratchpad dir, `npm run build
+  --workspace=apps/pbn-viewer`, copy `apps/pbn-viewer/dist/*` into a new `pbnviewer/` folder in that
+  clone, `git add pbnviewer` (nothing else staged — confirmed no existing site file touched),
+  commit, push to `main`. GitHub Pages' legacy build picked it up automatically; polled
+  `gh api repos/RalphLipe/bigdealbridge-website/pages/builds/latest` until `status: "built"` (~50s).
+- **Verified live, not just "pushed and assumed":** navigated the browser tool to
+  `https://bigdealbridge.com/pbnviewer/` — correct page, no console errors, loaded a real sample
+  deal via the actual file input (same technique used for local verification throughout this
+  project) and confirmed the deal/HCP-box render identically to local. Local scratch clone deleted
+  afterward — nothing left behind in the working tree.
+- **Ralph confirmed via AskUserQuestion before I touched the live repo:** subpath `/pbnviewer/`
+  (his own repo's `handsee/` precedent style — lowercase, no hyphen), and "push now" directly to
+  `main` rather than showing a diff first (matches how that repo has always deployed — no PR/review
+  step exists there).
+**Not done, explicitly deferred by Ralph ("eventually"):** making the viewer an installable/offline
+PWA. No work started on this — mentioned to Ralph only as a scope estimate (the standard tool is
+`vite-plugin-pwa`, which auto-generates a manifest + Workbox service worker; since this app is
+already 100% client-side with no backend calls, offline caching is a natural fit; the main real work
+would be producing actual icon assets at a few sizes, not the code/config itself). No CI/automated
+redeploy pipeline exists yet either — this was a manual one-off; worth automating later if the
+viewer becomes more than a test.
