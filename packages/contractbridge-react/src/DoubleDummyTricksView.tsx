@@ -1,6 +1,6 @@
 import type { CSSProperties, JSX, ReactNode } from 'react'
 import { PairDirection, Strain } from 'ts-contractbridge'
-import type { DoubleDummyTricks } from 'ts-contractbridge'
+import type { DoubleDummyTricks, Tricks } from 'ts-contractbridge'
 import { StrainSymbol } from './StrainSymbol.js'
 import './theme.css'
 
@@ -8,71 +8,88 @@ export type DoubleDummyTricksViewProps = {
   readonly tricks: DoubleDummyTricks
 }
 
-// A background chip behind a result that makes fewer than 7 tricks — the strain symbol and trick
-// count on top stay the normal foreground color/theming, only the fill changes (Ralph's explicit
-// choice; the ContractBridgeUI Swift reference this was ported from colors the text itself blue
-// instead — flagged and confirmed with Ralph before diverging from it).
-const underTricksChipStyle: CSSProperties = {
-  backgroundColor: 'var(--cb-under-tricks-bg, #bbdefb)',
-  borderRadius: '3px',
-  padding: '0 0.2em',
+// A translucent background wash behind a result where both sides fail to make 7 tricks — the
+// strain symbol and trick count on top stay the normal foreground color/theming, only the fill
+// changes. Matches the reference in Sources/ContractBridgeUI/DoubleDummuyTricksView.swift
+// (swift-contract-bridge — the authoritative reference from now on) almost exactly: it uses
+// `Color.blue.opacity(0.45)` as a plain background with no padding/rounding of its own
+// (`HStack(spacing: 0)`), so this uses the same rgba(0, 122, 255, 0.45) — iOS's system blue at the
+// same opacity — with no border-radius/padding added on our side either. Being translucent, it
+// blends over whatever's underneath, so (like the Swift version) no separate dark-mode value is
+// needed — it isn't a `--cb-*` token like the other colors in this module.
+const underTricksBackground: CSSProperties = {
+  backgroundColor: 'rgba(0, 122, 255, 0.45)',
 }
 
-// One strain's combined double-dummy result for a pair, mirroring ContractBridgeUI's
-// DoubleDummyTricksView (Sources/ContractBridgeUI/DoubleDummuyTricksView.swift) exactly except
-// for the under-7-tricks styling noted above:
-// - both partners make (>6 tricks): a single shared strain symbol, with the contract level(s) to
-//   its left — one level if the partners agree, "level/level" if they don't (e.g. one partner
-//   makes 1NT, the other makes 2NT).
-// - both fail to make 7 tricks: a single shared strain symbol (in the blue chip), with the raw
-//   trick count(s) — not a level — to its right.
-// - split (one partner makes, the other doesn't): two independent sub-results, each with its own
-//   strain symbol, in seat order, joined by "/" — e.g. North makes 1NT, South only takes 6 tricks
-//   in NT, renders as "1NT/NT6".
-function strainCell(a: number | undefined, b: number | undefined, strain: Strain): ReactNode {
-  if (a === undefined || b === undefined) return null
+const makingNode = (level: number, strain: Strain): ReactNode => (
+  <>{level}<StrainSymbol strain={strain} /></>
+)
+// tricks is a single count (from atLeastOneMakesNode's split case) or an already-formatted
+// "a/b" string (from pairCells' both-fail case, when the two sides differ).
+const underNode = (tricks: number | string, strain: Strain): ReactNode => (
+  <span style={underTricksBackground}><StrainSymbol strain={strain} />{tricks}</span>
+)
 
-  const makingNode = (level: number): ReactNode => (
-    <>{level}<StrainSymbol strain={strain} /></>
-  )
-  const underNode = (tricks: number): ReactNode => (
-    <span style={underTricksChipStyle}><StrainSymbol strain={strain} />{tricks}</span>
-  )
+// A strain where at least one side makes (>6 tricks) — mirrors atLeastOneMakes in the Swift
+// reference: both make → one shared strain symbol, contract level(s) to its left (a single level
+// if the partners agree, "level/level" if they don't); split (only one side makes) → two full
+// independent sub-results, each with its own strain symbol, in seat order, joined by "/" — e.g.
+// North makes 1NT, South only takes 6 tricks in NT, renders as "1NT/NT6".
+function atLeastOneMakesNode(a: number, b: number, strain: Strain): ReactNode {
+  if (a > 6 && b > 6) {
+    const levels = a === b ? `${a - 6}` : `${a - 6}/${b - 6}`
+    return <>{levels}<StrainSymbol strain={strain} /></>
+  }
+  return a > 6
+    ? <>{makingNode(a - 6, strain)}/{underNode(b, strain)}</>
+    : <>{underNode(a, strain)}/{makingNode(b - 6, strain)}</>
+}
 
-  if (a > 6) {
-    if (b > 6) {
-      const levels = a === b ? `${a - 6}` : `${a - 6}/${b - 6}`
-      return <>{levels}<StrainSymbol strain={strain} /></>
+// One pair's full row of results. Ralph pointed at swift-contract-bridge's
+// DoubleDummuyTricksView.swift as the reference to match, and its `body` does NOT lay results out
+// in strain order — it makes two full passes over every strain (each in Strain.allCases/Strain.all
+// order): first every strain where at least one side makes, THEN every strain where both sides
+// fail, each pass's results kept in strain order among themselves but the two groups never
+// interleaved. E.g. a real hand-record-2.pbn board where N=S have NT7,S9,H6,D6,C8 renders as
+// "2♣ 3♠ 1NT ♦6 ♥6" (both make-strains C,S,NT together, THEN both fail-strains D,H) — NOT
+// "2♣ ♦6 ♥6 3♠ 1NT" (strict per-strain order), which is what an earlier version of this component
+// produced before being checked against the actual reference file.
+function pairCells(tricks0: Tricks, tricks1: Tricks): ReactNode[] {
+  const cells: ReactNode[] = []
+  for (const strain of Strain.all) {
+    const a = tricks0[strain]
+    const b = tricks1[strain]
+    if (a !== undefined && b !== undefined && (a > 6 || b > 6)) {
+      cells.push(atLeastOneMakesNode(a, b, strain))
     }
-    return <>{makingNode(a - 6)}/{underNode(b)}</>
   }
-  if (b <= 6) {
-    const tricks = a === b ? `${a}` : `${a}/${b}`
-    return <span style={underTricksChipStyle}><StrainSymbol strain={strain} />{tricks}</span>
+  for (const strain of Strain.all) {
+    const a = tricks0[strain]
+    const b = tricks1[strain]
+    if (a !== undefined && b !== undefined && a <= 6 && b <= 6) {
+      cells.push(underNode(a === b ? a : `${a}/${b}`, strain))
+    }
   }
-  return <>{underNode(a)}/{makingNode(b - 6)}</>
+  return cells
 }
 
-// Both pairs' double-dummy results (NS, EW), one row each, one cell per strain — just a display
-// of a DoubleDummyTricks, no editing, matching the established component boundary.
+// Both pairs' double-dummy results (NS, EW), one row each — a plain horizontal flow per row
+// (matching the Swift reference's HStack — no fixed per-strain columns, since the two pairs can
+// have a different number of "makes"/"fails" results and Swift never tries to align them across
+// rows). Just a display of a DoubleDummyTricks, no editing, matching the established component
+// boundary.
 export function DoubleDummyTricksView({ tricks }: DoubleDummyTricksViewProps): JSX.Element {
   return (
-    <table style={{ borderCollapse: 'collapse' }}>
-      <tbody>
-        {PairDirection.all.map(pair => {
-          const [d0, d1] = PairDirection.directions(pair)
-          return (
-            <tr key={pair}>
-              <td style={{ padding: '0.15em 0.5em', fontWeight: 'bold' }}>{pair}</td>
-              {Strain.all.map(strain => (
-                <td key={strain} style={{ padding: '0.15em 0.5em' }}>
-                  {strainCell(tricks[d0][strain], tricks[d1][strain], strain)}
-                </td>
-              ))}
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <div>
+      {PairDirection.all.map(pair => {
+        const [d0, d1] = PairDirection.directions(pair)
+        return (
+          <div key={pair} style={{ display: 'flex', gap: '0.5em', alignItems: 'baseline' }}>
+            <span style={{ fontWeight: 'bold' }}>{pair}</span>
+            {pairCells(tricks[d0], tricks[d1]).map((cell, i) => <span key={i}>{cell}</span>)}
+          </div>
+        )
+      })}
+    </div>
   )
 }

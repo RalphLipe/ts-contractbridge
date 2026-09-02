@@ -1140,3 +1140,53 @@ verification — temp-copied into `apps/pbn-viewer/public/`, `fetch()`'d, dispat
 input) and confirmed the double-dummy display still renders correctly end-to-end after the rename,
 with no console errors beyond the usual harmless HMR WebSocket noise. Temp file removed again
 afterward.
+
+## Swift reference source corrected: only `swift-contract-bridge` from now on (2026-09)
+**Important standing rule, also saved to the cross-session memory system (not just this file) as
+`swift-reference-source`:** the Swift reference for this whole port is
+`/Users/ralphlipe/Documents/GitHub/swift-contract-bridge` — specifically `Sources/ContractBridge`
+and `Sources/ContractBridgeUI` under it. Ralph is deleting the older standalone `ContractBridge`
+and `ContractBridgeUI` repo clones (confirmed clean/fully pushed first) — they're stale duplicates,
+not alternate valid sources.
+**This was learned from a real mistake, not hypothetically:** `DoubleDummyTricksView` was built
+this session by reading the *old* standalone `ContractBridgeUI` repo's `DoubleDummuyTricksView.swift`
+(note: real typo in the filename — "DoubleDummuy" — present in BOTH the old repo and
+`swift-contract-bridge`'s copy, so don't "fix" it if ever touching either). Ralph corrected me to
+`swift-contract-bridge/Sources/ContractBridgeUI/DoubleDummuyTricksView.swift` specifically, and the
+two files had genuinely diverged:
+- **Styling:** the old repo's version colors the "doesn't make 7 tricks" text itself blue
+  (`.foregroundColor(.blue)`) — which is what I'd flagged to Ralph as a discrepancy from his
+  "blue background" description, and he then confirmed background over foreground. The
+  *authoritative* `swift-contract-bridge` version actually already uses a **translucent background
+  wash**, `Color.blue.opacity(0.45)` in a plain `HStack(spacing: 0)` with no padding/rounding of its
+  own — i.e., Ralph's original "background" description matches the real reference exactly; I'd
+  simply been comparing against the wrong (stale) file.
+- **Layout/ordering — the real behavioral bug:** the old repo's version (and my first TS port)
+  render cells in strict per-strain column order (C, D, H, S, NT), each strain's cell independently
+  deciding making/under. `swift-contract-bridge`'s actual `body` makes **two full passes over every
+  strain** (each pass in `Strain.allCases`/`Strain.all` order): first every strain where *at least
+  one side makes* (`a > 6 || b > 6`, via `atLeastOneMakes` — this covers both the "both make" and
+  the "split" sub-cases), **then** every strain where *both sides fail* (`a <= 6 && b <= 6`). The
+  two groups are never interleaved. E.g. a real board from `hand-record-2.pbn` where N=S have
+  NT7/S9/H6/D6/C8 renders as `"2♣ 3♠ 1NT ♦6 ♥6"` (making-strains C,S,NT together, then failing-
+  strains D,H together) — **not** `"2♣ ♦6 ♥6 3♠ 1NT"` (strict per-strain order), which is what the
+  first TS version produced and is simply wrong.
+- **Layout structure follows from this:** since the two pairs' rows can have a different number of
+  "making" vs "failing" cells, `DoubleDummyTricksView.tsx` no longer uses a `<table>` with fixed
+  per-strain columns (which assumed the two rows always align cell-for-cell, which the real
+  reference never does) — it's now a plain flex row per pair (`display: flex`, matching Swift's
+  `HStack`), with `pairCells()` building the two-pass list of cells to render.
+- **`--cb-under-tricks-bg` theme token removed** — since the fill is a translucent overlay
+  (`rgba(0, 122, 255, 0.45)`, iOS's system blue at the same 0.45 opacity Swift uses) rather than a
+  solid color, it naturally blends over whatever's underneath in either theme; no separate
+  dark-mode value was needed, unlike the solid `--cb-suit-black`/`--cb-suit-red` tokens which
+  genuinely do need distinct light/dark values.
+**Re-verified against the real `hand-record-2.pbn` again** (same technique as before — temp-copied
+into `apps/pbn-viewer/public/`, loaded through the actual file input) — confirmed Board 1's NS row
+now reads `2♣ 3♠ 1NT ♦6 ♥6` and EW reads `1♦ ♣4 ♥6 ♠4 NT6`, hand-verified against the raw hex,
+and confirmed the translucent blue wash reads correctly in both light and dark mode via
+`resize_window`'s emulation. Full workspace typecheck/tests/build clean throughout.
+**How to apply going forward:** before treating ANY Swift file as ground truth, confirm it's being
+read from `swift-contract-bridge` specifically — a similarly-named file in a different local clone
+is not an acceptable substitute, even if it looks identical at a glance. If the relevant file isn't
+found under `swift-contract-bridge`, say so explicitly and ask rather than falling back silently.
