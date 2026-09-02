@@ -991,3 +991,152 @@ already 100% client-side with no backend calls, offline caching is a natural fit
 would be producing actual icon assets at a few sizes, not the code/config itself). No CI/automated
 redeploy pipeline exists yet either — this was a manual one-off; worth automating later if the
 viewer becomes more than a test.
+**Hiding it from the public, clarified 2026-09:** Ralph does NOT want search-engine exclusion or a
+password gate (both offered, both declined) — he only wants no link to it from the homepage/nav,
+and doesn't care if someone stumbles on the URL by other means. That was already true (nothing was
+ever added to `bigdealbridge-website`'s `index.html` or any nav) — confirmed by grepping the live
+`index.html` for "pbnviewer" and finding nothing. **How to apply:** don't add search-engine
+exclusion (`noindex`/`robots.txt`) or any access gate to this deploy unless Ralph asks again —
+"hidden" here means "unlinked," nothing more.
+
+## `DoubleDummyTableView` — ported from the ContractBridgeUI Swift reference (2026-09)
+**Ralph explicitly pointed at a Swift reference implementation for this one** (unlike every other
+`contractbridge-react` component so far, which were designed fresh): `DoubleDummuyTricksView.swift`
+(yes, that's a typo in the actual filename — `DoubleDummuy`, not `DoubleDummy`; don't "fix" it if
+ever asked to touch that repo) in `/Users/ralphlipe/Documents/GitHub/ContractBridgeUI/Sources/
+ContractBridgeUI/`. That repo depends on the OLDER standalone `ContractBridge` Swift package
+(`github.com/RalphLipe/ContractBridge`, branch `matchpoints` — see its `Package.swift`), not the
+`swift-contract-bridge` repo this whole TS port otherwise treats as authoritative — but Ralph
+pointed at it specifically for this feature, so it's the right reference for the display logic here
+regardless of which Swift package backs it.
+- **Algorithm, traced through by hand from `DoubleDummuyTricksView.swift`'s `makingTricks`/
+  `underTricks`/`body`:** for each strain, compare each pair-member's raw double-dummy trick count
+  (`a`, `b`, 0-13) against the "makes at least a part-score" threshold of 7:
+  - **Both ≥7 (both make):** one combined result, one shared strain symbol — the contract level(s)
+    (`a-6`/`b-6`) to its left; a single level if the partners agree, `"level/level"` if they don't
+    (e.g. one partner makes 1NT, the other makes 2NT → `"1/2NT"`).
+  - **Both ≤6 (neither makes):** one combined result, one shared strain symbol — the *raw trick
+    count(s)* (not a level) to its **right** this time (`"NT6"`, or `"NT6/5"` if they differ).
+  - **Split (one makes, one doesn't):** two full independent sub-results, each with its own strain
+    symbol, always in seat order (not "maker first"), joined by a literal `"/"` — e.g. North makes
+    1NT (7 tricks), South only takes 6 in NT → `"1NT/NT6"`, Ralph's own example, confirmed to render
+    exactly that once built.
+  - **Either value missing** (no double-dummy data for that direction/strain — the TS `Tricks` type
+    already models this as optional, matching Swift's `if let a = ..., let b = ...` guard): render
+    nothing for that strain, not a placeholder — matches the Swift reference exactly.
+- **Strain symbol representation is identical in both branches — traced this down via Swift's
+  custom string interpolation, not just assumed:** `makingTricks` calls `"\(strain, style:
+  .symbol)"` explicitly; `underTricks` calls plain `"\(strain)"` — these LOOK different but the old
+  `ContractBridge` package's `String.StringInterpolation.appendInterpolation(_ strain:Strain, style:
+  = .symbol)` defaults its `style` parameter to `.symbol` too, so both branches produce the exact
+  same suit-glyph-or-"NT" output. Confirms the TS port can use one shared representation
+  (`StrainSymbol`) in every branch, not two different ones.
+- **New shared `StrainSymbol` component** (`src/StrainSymbol.tsx`), factored out of
+  `AuctionTable.tsx`'s inline "suit or NT" check (which had exactly this logic already, now reused
+  rather than duplicated a second time) — renders an actual suit via `SuitSymbol` (same red/black
+  theming) or plain `"NT"` text for no-trump. `AuctionTable.callNode` now composes it instead of
+  its own copy.
+- **One deliberate deviation from the Swift reference, confirmed via AskUserQuestion before
+  building:** the Swift code colors the "doesn't make 7 tricks" text itself blue (foreground
+  color). Ralph's original prose described a blue *background* instead — flagged the discrepancy
+  explicitly (quoting the Swift code) rather than silently picking one, and Ralph confirmed:
+  background fill, not foreground text color. Implemented as a `<span>` "chip" (`background-color`
+  + small `border-radius`/padding) wrapping just the affected sub-expression — necessary because in
+  the split case only HALF the cell (the non-making side) gets the treatment, so the fill can't
+  live on the `<td>` itself.
+  New theme token **`--cb-under-tricks-bg`** added to `theme.css` (light `#bbdefb`, dark `#0d47a1`)
+  — the chip's fill, following the same "component owns a themed default, app can override" pattern
+  as `--cb-suit-black`/`--cb-suit-red`. Text on top of the chip stays the normal foreground/suit
+  color (not overridden to blue), matching what Ralph actually asked for.
+- **`PBNGame.getDoubleDummyTable()`/`setDoubleDummyTable()`** (new, `pbnGame.ts`) — a thin wrapper
+  over `DoubleDummyTable.fromPBN`/`toPBN` (already existed), same shape as `getContract`/
+  `setContract`. Reads/writes the `[DoubleDummyTable "...hex..."]` tag (not part of the official PBN
+  spec, but the established convention real PBN files use — same note already in
+  `doubleDummyTable.ts`). 5 new tests in `pbnGame.test.ts` (round-trip, parse, missing tag,
+  malformed/wrong-length value, replace) reusing the same real-world hex fixture
+  (`'79668796686467464674'`) `doubleDummyTable.test.ts` already used — no new fixture invented.
+  None of the real `test-data/*.pbn` files happen to contain a `[DoubleDummyTable]` tag, so
+  end-to-end verification used a hand-constructed one instead (see below), covering every branch
+  deliberately (both-make-same-level, both-make-different-levels, both-under-same, both-under-
+  different, the split case, and an all-unknown EW pair to confirm empty cells render as nothing).
+- **Verified visually in both themes**, not just by tracing the algorithm: loaded a synthetic
+  `[DoubleDummyTable "7895668A46FFFFFFFFFF"]` fixture (N/S real values covering every branch above,
+  E/W all `"F"`/unknown) via the browser tool and confirmed every cell matches the hand-traced
+  expected output exactly, including Ralph's own `"1NT/NT6"` example — then re-confirmed via
+  `resize_window`'s dark-mode emulation that the chip stays legible (light text on the darker
+  `#0d47a1` fill) and suit colors stay correct.
+**Not done:** no par-score display (Swift's `HandRecordView` shows one alongside the double-dummy
+rows; not asked for here), no column headers (matches the Swift reference's own lack of them — the
+reader is expected to recognize the strain symbols), no editing.
+
+**Bug found immediately by Ralph loading a real file (2026-09): wrong PBN tag name, everything else
+correct.** `PBNGame.getDoubleDummyTable`/`setDoubleDummyTable` read/wrote the tag as
+`"DoubleDummyTable"` — but real PBN files (confirmed against both `test-data/hand-record-1.pbn` and
+`hand-record-2.pbn`) use `[DoubleDummyTricks "...hex..."]`. So `getDoubleDummyTable()` always
+returned `undefined` against genuine data — the display logic itself was never wrong, the accessor
+just could never find the tag to feed it. Root cause: this TS port renamed the *type* from Swift's
+`DoubleDummyTricks` to `DoubleDummyTable` (an earlier, reasonable-on-its-own naming choice — see
+"Already ported" section), and a stale/incorrect comment in `doubleDummyTable.ts` had already
+(wrongly) claimed `"DoubleDummyTable"` was the real tag name, before any code actually depended on
+that claim being right. When I added the `PBNGame` accessor this session, I copied that wrong
+comment's assumption instead of checking it against a real file — the exact kind of mismatch a
+type rename can quietly cause down the line. **Fixed:** both `doubleDummyTable.ts` comments now say
+`[DoubleDummyTricks]` and explain the type-name-vs-wire-tag distinction explicitly; `pbnGame.ts`'s
+accessor now reads/writes tag name `"DoubleDummyTricks"`; `pbnGame.test.ts`'s 5 tests updated to
+construct fixtures with the correct tag name (they were internally consistent with the same wrong
+name before, which is exactly why they passed despite the real bug).
+**Re-verified against real, unmodified production data, not just corrected synthetic tests:**
+temporarily copied the actual `test-data/hand-record-2.pbn` (24,899 bytes, unmodified) into
+`apps/pbn-viewer/public/` so the dev server could serve it, `fetch()`'d it in the browser tool, and
+loaded it through the real file input exactly as a user would — confirmed Board 1's double-dummy
+row now renders (`2♣ ♦6 ♥6 3♠ 1NT` / `♣4 1♦ ♥6 ♠4 NT6`), hand-checked against the raw hex
+(`"79668796686467464674"`, N=S, E=W) to confirm every cell. Temp file removed afterward, nothing
+left in the working tree.
+**How to apply going forward:** when a comment claims a specific real-world wire format/tag name
+convention, verify it against an actual real-data fixture (`test-data/*.pbn` here) before trusting
+it and building an accessor on top of it — don't propagate an existing comment's claim unchecked,
+even one that's been sitting in the codebase for a while. This applies to any future PBN tag
+accessor, not just this one.
+
+## Renamed `DoubleDummyTable` → `DoubleDummyTricks` everywhere (2026-09)
+**Ralph's call, right after the tag-name bug above:** since the whole bug was caused by this type's
+name (`DoubleDummyTable`) not matching the real PBN wire tag *or* Swift's own type name (both
+`DoubleDummyTricks`), rather than leave that mismatch in place now that it's understood, rename the
+type itself to eliminate the discrepancy at its root — not just patch the one tag-name string.
+Renamed everywhere, methodically, one layer at a time, typechecking/testing after each:
+- **`packages/ts-contractbridge/src/doubleDummyTable.ts` → `doubleDummyTricks.ts`** — type and const
+  object `DoubleDummyTable` → `DoubleDummyTricks` throughout; comments updated to explain *why*
+  (the type-name/wire-tag mismatch that caused the earlier bug), not just restate the rename.
+- **`packages/ts-contractbridge/tests/doubleDummyTable.test.ts` → `doubleDummyTricks.test.ts`** —
+  same rename throughout, no behavior change (still the same 10 test cases, same fixtures).
+- **`src/index.ts`** — export path/name updated.
+- **`src/pbn/pbnGame.ts`** — import updated; **the accessor methods themselves renamed too**
+  (`getDoubleDummyTable`/`setDoubleDummyTable` → `getDoubleDummyTricks`/`setDoubleDummyTricks`),
+  matching this codebase's established convention that an accessor's name mirrors the type it
+  returns (`getContract`→`Contract`, `getDeal`→`Deal`, `getAuction`→`PBNAuction`, etc.) — leaving
+  the method name as `getDoubleDummyTable` while the type became `DoubleDummyTricks` would have
+  reintroduced a smaller version of the exact same name/reality mismatch that caused the original
+  bug. `tests/pbn/pbnGame.test.ts` updated to match (method names, local variable name `table` →
+  `tricks`; the `describe` block and all 5 `it` names too).
+- **`packages/contractbridge-react/src/DoubleDummyTableView.tsx` → `DoubleDummyTricksView.tsx`** —
+  component renamed to `DoubleDummyTricksView` (this also now matches the Swift reference's own
+  view name, `DoubleDummyTricksView`, a nice side-effect of chasing consistency rather than a goal
+  in itself), its prop renamed from `table` to `tricks` to match the type. `StrainSymbol.tsx`'s
+  comment (which mentioned the old component name) and `src/index.ts`'s exports updated too.
+- **`apps/pbn-viewer/src/App.tsx`** — import, local variable (`selectedDoubleDummy` →
+  `selectedDoubleDummyTricks`), and JSX usage (`<DoubleDummyTricksView tricks={...} />`) all updated.
+- **Every old file was `rm`'d after its replacement was written** (not `git mv`) — git's own
+  content-similarity rename detection should still pick these up as renames rather than
+  delete+create pairs once committed, since each new file is a near-verbatim copy with only the
+  identifier renamed.
+- **Two intentional exceptions left referencing the old name** — both are comments explaining the
+  *history* of the bug/rename itself (in `doubleDummyTricks.ts` and `pbnGame.ts`), not dead code;
+  correctly not "cleaned up" during the `grep` sweep that confirmed no other stale reference remained.
+**Verified after every layer, not just once at the end:** `tsc --noEmit` + `npm test` in
+`packages/ts-contractbridge` after the core rename (375 tests, unchanged); typecheck in
+`contractbridge-react`; typecheck + `vite build` in `apps/pbn-viewer`; then **re-loaded the real,
+unmodified `hand-record-2.pbn` through the actual file input again** (same technique as the bug-fix
+verification — temp-copied into `apps/pbn-viewer/public/`, `fetch()`'d, dispatched through the
+input) and confirmed the double-dummy display still renders correctly end-to-end after the rename,
+with no console errors beyond the usual harmless HMR WebSocket noise. Temp file removed again
+afterward.

@@ -5,6 +5,7 @@ import { Deal } from '../../src/deal.js'
 import { Contract } from '../../src/contract.js'
 import { DeclaredContract } from '../../src/declaredContract.js'
 import { DealOutcome } from '../../src/dealOutcome.js'
+import { DoubleDummyTricks } from '../../src/doubleDummyTricks.js'
 
 describe('PBNGame', () => {
   it('defaults to no sections', () => {
@@ -485,6 +486,44 @@ describe('PBNGame', () => {
       expect(() => game.setDealOutcome(DealOutcome.averagePlus)).toThrow()
       expect(() => game.setDealOutcome(DealOutcome.averageMinus)).toThrow()
       expect(() => game.setDealOutcome(DealOutcome.noScore)).toThrow()
+    })
+  })
+
+  describe('getDoubleDummyTricks / setDoubleDummyTricks', () => {
+    // Real-world example from a PBN hand record: N=S=[NT7,S9,H6,D6,C8], E=W=[NT6,S4,H6,D7,C4]
+    const SAMPLE_PBN = '79668796686467464674'
+
+    it('setDoubleDummyTricks followed by getDoubleDummyTricks round-trips', () => {
+      const tricks = DoubleDummyTricks.fromPBN(SAMPLE_PBN)!
+      const game = new PBNGame()
+      game.setDoubleDummyTricks(tricks)
+      expect(game.getDoubleDummyTricks()).toEqual(tricks)
+      expect(game.getTagValue('DoubleDummyTricks')).toBe(SAMPLE_PBN)
+    })
+
+    it('getDoubleDummyTricks parses the DoubleDummyTricks tag', () => {
+      const game = new PBNGame([new PBNSection([`[DoubleDummyTricks "${SAMPLE_PBN}"]`])])
+      const tricks = game.getDoubleDummyTricks()
+      expect(tricks?.N).toEqual({ NT: 7, S: 9, H: 6, D: 6, C: 8 })
+      expect(tricks?.E).toEqual({ NT: 6, S: 4, H: 6, D: 7, C: 4 })
+    })
+
+    it('getDoubleDummyTricks is undefined when there is no DoubleDummyTricks tag', () => {
+      const game = new PBNGame()
+      expect(game.getDoubleDummyTricks()).toBeUndefined()
+    })
+
+    it('getDoubleDummyTricks is undefined for a malformed (wrong-length) value', () => {
+      const game = new PBNGame([new PBNSection(['[DoubleDummyTricks "1234"]'])])
+      expect(game.getDoubleDummyTricks()).toBeUndefined()
+    })
+
+    it('setDoubleDummyTricks replaces an existing DoubleDummyTricks tag', () => {
+      const game = new PBNGame([new PBNSection([`[DoubleDummyTricks "${SAMPLE_PBN}"]`])])
+      const empty = DoubleDummyTricks.make()
+      game.setDoubleDummyTricks(empty)
+      expect(game.sections).toHaveLength(1)
+      expect(game.getTagValue('DoubleDummyTricks')).toBe('F'.repeat(20))
     })
   })
 

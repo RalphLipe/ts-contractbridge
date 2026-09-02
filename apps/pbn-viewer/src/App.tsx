@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
 import { Direction, PBNDocument } from 'ts-contractbridge'
 import type { PBNGame } from 'ts-contractbridge'
-import { AuctionTable, DealDiagram } from 'contractbridge-react'
+import { AuctionTable, DealDiagram, DoubleDummyTricksView } from 'contractbridge-react'
 
 const gameLabel = (game: PBNGame, index: number): string => {
   const board = game.getBoard()
@@ -34,6 +34,7 @@ export function App(): JSX.Element {
   const selectedGame = doc?.games[selectedIndex]
   const selectedDeal = selectedGame?.getDeal()
   const selectedAuction = selectedGame?.getAuction()
+  const selectedDoubleDummyTricks = selectedGame?.getDoubleDummyTricks()
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>
@@ -63,6 +64,9 @@ export function App(): JSX.Element {
           {selectedDeal !== undefined
             ? <DealDiagram deal={selectedDeal} />
             : <p>This game has no Deal tag to display.</p>}
+
+          {selectedDoubleDummyTricks !== undefined &&
+            <DoubleDummyTricksView tricks={selectedDoubleDummyTricks} />}
 
           {selectedAuction !== undefined && <AuctionTable auction={selectedAuction} />}
         </>

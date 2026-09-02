@@ -4,11 +4,15 @@
 :root {
   --cb-suit-black: #1a1a1a;
   --cb-suit-red: #c62828;
+  /* Background chip behind a double-dummy result that makes fewer than 7 tricks — text on top
+     stays the normal foreground color, only the fill changes. */
+  --cb-under-tricks-bg: #bbdefb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --cb-suit-black: #e8e8e8;
     --cb-suit-red: #ef5350;
+    --cb-under-tricks-bg: #0d47a1;
   }
 }

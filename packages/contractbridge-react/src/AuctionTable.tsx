@@ -1,7 +1,7 @@
 import type { JSX, ReactNode } from 'react'
-import { Bid, Direction, Strain } from 'ts-contractbridge'
+import { Bid, Direction } from 'ts-contractbridge'
 import type { Call, PBNAuction, PBNAuctionCall } from 'ts-contractbridge'
-import { SuitSymbol } from './SuitSymbol.js'
+import { StrainSymbol } from './StrainSymbol.js'
 
 // Standard hand-record column order — West first (leftmost), then North, East, South — NOT
 // Direction.all's clockwise-from-North order. This is the conventional layout Ralph asked for,
@@ -13,15 +13,14 @@ export type AuctionTableProps = {
   readonly auction: PBNAuction
 }
 
-// "Pass"/"X"/"XX" render as-is; a bid renders as its level plus a colored suit glyph (via
-// SuitSymbol, matching HandDiagram's suit coloring) or the literal "NT" for no-trump.
+// "Pass"/"X"/"XX" render as-is; a bid renders as its level plus its strain (via StrainSymbol, so
+// it gets the same red/black theming as everywhere else, or "NT" for no-trump).
 const callNode = (call: Call): ReactNode => {
   if (call === 'Pass' || call === 'X' || call === 'XX') return call
-  const suit = Strain.toSuit(Bid.strain(call))
   return (
     <>
       {Bid.level(call)}
-      {suit === null ? 'NT' : <SuitSymbol suit={suit} />}
+      <StrainSymbol strain={Bid.strain(call)} />
     </>
   )
 }

@@ -10,6 +10,7 @@ import { DealOutcome } from '../dealOutcome.js'
 import { PBNAuction } from './pbnAuction.js'
 import { parseSectionLines } from './parsedSection.js'
 import type { ParsedSection } from './parsedSection.js'
+import { DoubleDummyTricks } from '../doubleDummyTricks.js'
 
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
@@ -198,6 +199,21 @@ export class PBNGame {
     const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === 'auction')
     if (section === undefined) return undefined
     return PBNAuction.fromPBNSection(section.lines)
+  }
+
+  // Thin wrapper over DoubleDummyTricks's existing PBNCodable conformance. The wire tag is
+  // "[DoubleDummyTricks "...hex..."]" — real PBN files' actual convention (confirmed against
+  // test-data/hand-record-1.pbn and hand-record-2.pbn). This type/accessor pair was originally
+  // named "DoubleDummyTable" here, which caused a real bug — the accessor looked for a tag name
+  // that never matched real data — fixed by renaming everything to match both the wire tag and
+  // Swift's own type name for this concept.
+  getDoubleDummyTricks(): DoubleDummyTricks | undefined {
+    const value = this.getTagValue('DoubleDummyTricks')
+    return value === undefined ? undefined : DoubleDummyTricks.fromPBN(value)
+  }
+
+  setDoubleDummyTricks(tricks: DoubleDummyTricks): void {
+    this.setTag({ name: 'DoubleDummyTricks', value: DoubleDummyTricks.toPBN(tricks) })
   }
 
   // Splits a section's raw lines into tagPair/bodyLines/notes/comments — see ParsedSection. Any
