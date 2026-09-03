@@ -50,7 +50,9 @@ export function DealDiagram({ deal, playerNames }: DealDiagramProps): JSX.Elemen
         gridTemplateColumns: 'repeat(3, auto)',
         gridTemplateRows: 'repeat(3, auto)',
         gap: '0.5rem',
-        justifyContent: 'center',
+        // Left-justified rather than centered — the diagram should sit at the start of whatever
+        // container it's in, not float in the middle of the page.
+        justifyContent: 'start',
       }}
     >
       {Direction.all.map(dir => {

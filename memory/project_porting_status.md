@@ -1360,3 +1360,56 @@ Exactly the "specifically comments for the Result tag" work flagged as deferred 
   `DealOutcome`, but a Result comment) shows only the comment, no tricks/score line; Board 3 (no
   Result comment at all) shows nothing. 404 tests still pass (no new core tests needed — this is
   pure composition of already-tested pieces), full workspace typecheck/build clean.
+
+## Three small `pbn-viewer` UI tweaks (2026-09)
+- **Dealer/Vulnerable line above the deal** — `apps/pbn-viewer/src/App.tsx` now shows
+  `Dealer: {name}   Vulnerable: {value}` above `DealDiagram`, built from `getDealer()`/
+  `getVulnerable()` (each independently optional — a missing one just drops from the joined
+  string; the whole line disappears if both are missing). No new component — this is app-specific
+  page copy, not something `contractbridge-react` needs to own.
+- **`DealDiagram` left-justified, not centered** — `packages/contractbridge-react/src/
+  DealDiagram.tsx`'s outer grid had `justifyContent: 'center'`; since that div is a full-width
+  block sitting in whatever container it's placed in, centering the grid's own (narrower,
+  content-sized) columns within it made the whole diagram float in the middle of the page instead
+  of sitting at the page's left edge. Changed to `justifyContent: 'start'`. This is the component's
+  own default now (not a new prop) — no consumer asked for center-alignment as an option.
+- **Dealer dropped from the `Game:` selector** — `gameLabel()` now returns just `Board ${n}`; the
+  `— Dealer ${name}` suffix (added when the selector was first built) is gone. The dealer is still
+  fully visible via the new line above the deal, just not duplicated in the dropdown too.
+**Verified via the browser tool in both themes:** selector shows "Board 1" only; "Dealer: North
+Vulnerable: NS" line renders correctly above a left-justified (not centered) deal diagram. 404
+tests unaffected (no core changes), full workspace typecheck/build clean.
+
+## Game selector: "Game:" label removed, letters for missing board numbers, dedup for duplicates (2026-09)
+Ralph's framing: "Game" makes no sense to a bridge player outside the PBN file format itself —
+he thinks of these as **Boards** always, lesson files included ("For lesson deals the games become
+'lessons'" was raised but deliberately NOT built — see below). Also flagged two real correctness
+concerns with the old `board ?? index + 1` fallback: a missing board number silently became a
+plain digit indistinguishable from a real one, and a genuine duplicate board number (two games both
+"Board 3") would've produced two identical-looking dropdown entries.
+- **The `<label>Game: …</label>` wrapper is gone entirely** — the `<select>` now stands alone; its
+  options already say "Board N", so a preceding label added nothing once "Game" itself was wrong.
+- **One word everywhere, no file-genre detection.** Discussed but deliberately rejected: labeling
+  lesson-style files "Lesson N" instead of "Board N" (e.g. via sniffing `[Event]` for the word
+  "Lesson", or "no game in this file has a Board tag"). Any such heuristic will eventually misfire
+  on some real file; "Board" is already how bridge players refer to a single dealt hand regardless
+  of tournament-vs-lesson context, so one consistent word beats a fragile guess.
+- **`apps/pbn-viewer/src/App.tsx`'s label computation moved from a per-game pure function to a
+  whole-document one, `gameLabels(games): readonly string[]`** — necessary because both new rules
+  need to see every game at once, not one in isolation:
+  - **Missing board number → a letter, not a number** (`letterLabel(n)`: spreadsheet-column style,
+    A-Z then AA/AB/...) — assigned sequentially only across games that actually lack a Board tag,
+    so the *n*-th such game gets the *n*-th letter regardless of its position among games that do
+    have real numbers. A letter can never be mistaken for a real board number, which was exactly
+    the ambiguity Ralph flagged in the old silent-index-fallback behavior.
+  - **A real board number that repeats gets " (2)", " (3)", etc.** on the second-and-later
+    occurrence (tracked via a `Map<number, count>` walked in document order) — the first occurrence
+    of any number stays bare ("Board 3").
+  - **Selection was never at risk either way** — the `<select>`'s `value`/`onChange` are the array
+    index, not the label text; duplicate or synthetic labels are purely a display concern, and this
+    was true before this change too.
+**Verified via the browser tool, in both themes:** a 4-game fixture (`Board 5`, `Board 5` again, no
+Board tag at all, `Board 12`) produced exactly `["Board 5", "Board 5 (2)", "Board A", "Board 12"]`;
+selecting "Board A" correctly loaded that specific game (confirmed via its distinct Dealer value),
+proving the index-based selection under a letter label works exactly like a numeric one. 404 tests
+unaffected (no core changes), full workspace typecheck/build clean.
