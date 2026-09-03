@@ -1,10 +1,13 @@
 import type { CSSProperties, JSX } from 'react'
 import { Deal, Direction } from 'ts-contractbridge'
-import type { Hand } from 'ts-contractbridge'
+import type { Hand, PlayerNames } from 'ts-contractbridge'
 import { HandDiagram } from './HandDiagram.js'
 
 export type DealDiagramProps = {
   readonly deal: Deal
+  // Optional — a direction with no name (or this prop omitted entirely) just shows no label
+  // above that hand, same as before this prop existed.
+  readonly playerNames?: PlayerNames
 }
 
 // Compass layout: North top-center, West/East either side, South bottom-center, center cell holds
@@ -35,9 +38,11 @@ const hcpText = (hand: Hand): string => (hand.size === 0 ? '' : String(Deal.hcp(
 // in the center — sized to match the height of the West/East hands it sits between — showing all
 // four hands' HCP, each positioned toward its own compass direction within the box. The box is
 // purely a visual divider between the hands plus a place to see every hand's point count at a
-// glance; it holds no other state. No dealer/vulnerability decoration yet, no selection/editing;
-// those are later steps.
-export function DealDiagram({ deal }: DealDiagramProps): JSX.Element {
+// glance; it holds no other state. If playerNames is given and has a name for a direction, that
+// name is shown above the hand — a direction with no name (or the whole prop omitted) shows no
+// label, same as before this prop existed. No dealer/vulnerability decoration yet, no
+// selection/editing; those are later steps.
+export function DealDiagram({ deal, playerNames }: DealDiagramProps): JSX.Element {
   return (
     <div
       style={{
@@ -48,11 +53,22 @@ export function DealDiagram({ deal }: DealDiagramProps): JSX.Element {
         justifyContent: 'center',
       }}
     >
-      {Direction.all.map(dir => (
-        <div key={dir} style={cellStyle[dir]}>
-          <HandDiagram hand={deal.hands[dir]} />
-        </div>
-      ))}
+      {Direction.all.map(dir => {
+        // An empty-string name (a real PBN convention — files routinely have e.g. [West ""] when
+        // no name was recorded) counts as "no name" here, same as the tag being absent entirely —
+        // there's nothing useful to display either way.
+        const name = playerNames?.[dir]
+        return (
+          <div key={dir} style={cellStyle[dir]}>
+            {name !== undefined && name !== '' && (
+              <div style={{ fontWeight: 'bold', textAlign: 'center', marginBottom: '0.25rem' }}>
+                {name}
+              </div>
+            )}
+            <HandDiagram hand={deal.hands[dir]} />
+          </div>
+        )
+      })}
       <div
         style={{
           gridColumn: 2,

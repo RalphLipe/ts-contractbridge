@@ -1228,3 +1228,31 @@ all. Ralph's ask is a deliberate improvement over that shape for the TS port, no
   `tests/pbn/pbnGame.test.ts` (empty game, reads-whichever-present, round-trip, delete-on-replace,
   clear-all-via-empty-value). 387 tests total, full workspace typecheck/build clean. No UI component
   requested this time — `contractbridge-react`/`pbn-viewer` untouched.
+
+## `DealDiagram` gained an optional `playerNames` prop (2026-09)
+Follow-up to `PlayerNames` above: `DealDiagram` can now show a player's name above their hand.
+- **`DealDiagramProps.playerNames?: PlayerNames`** — optional; if omitted, or if a direction has no
+  name, that hand shows no label at all, exactly matching the component's behavior before this prop
+  existed (the direction-name labels were removed by Ralph himself a few steps back — this doesn't
+  bring those back, it's a different, opt-in label).
+  **`exactOptionalPropertyTypes` gotcha, hit wiring this into `apps/pbn-viewer`:** passing
+  `playerNames={someDirectionMap | undefined}` directly failed to typecheck (`Type 'undefined' is
+  not assignable to type 'PlayerNames'` under this repo's strict `exactOptionalPropertyTypes: true`,
+  which distinguishes "prop omitted" from "prop explicitly set to undefined"). Fixed with this
+  codebase's established conditional-spread idiom (already used in `pbnAuction.ts`'s
+  `makingCall`): `{...(value !== undefined && { playerNames: value })}` — conditionally spreads the
+  prop in only when it's actually present, never passes an explicit `undefined`.
+- **Empty-string names count as "no name," not "an empty name" — a deliberate display-layer
+  decision, not something `PBNGame.getPlayerNames()` itself does.** Real PBN files routinely have
+  e.g. `[West ""]` (empty but present) rather than omitting the tag — confirmed by grepping
+  `test-data/*.pbn`, where every existing West/North/East/South tag is empty-valued. `getPlayerNames`
+  stays a faithful, unopinionated raw-tag reader (an empty-string tag still becomes an
+  entry in the returned `PlayerNames`, matching how `getTagValue` never filters values); it's
+  `DealDiagram` specifically that treats `name !== undefined && name !== ''` as "show a label" —
+  the right layer for this call, since a different consumer of `PlayerNames` might legitimately
+  want to see the raw empty string.
+- **Verified via the browser tool, three cases, in both themes:** a fixture with West="Wanda",
+  North="" (empty), East="Eddie", South="Sam" correctly shows labels for W/E/S and none for N; a
+  fixture with no West/North/East/South tags at all shows no labels anywhere (matching pre-existing
+  behavior exactly, confirmed via screenshot + an empty console-error check); both re-confirmed in
+  light mode after starting in dark. 387 tests still pass, full workspace typecheck/build clean.

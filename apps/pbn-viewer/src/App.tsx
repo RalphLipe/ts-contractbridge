@@ -35,6 +35,7 @@ export function App(): JSX.Element {
   const selectedDeal = selectedGame?.getDeal()
   const selectedAuction = selectedGame?.getAuction()
   const selectedDoubleDummyTricks = selectedGame?.getDoubleDummyTricks()
+  const selectedPlayerNames = selectedGame?.getPlayerNames()
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>
@@ -62,7 +63,10 @@ export function App(): JSX.Element {
           </p>
 
           {selectedDeal !== undefined
-            ? <DealDiagram deal={selectedDeal} />
+            ? <DealDiagram
+                deal={selectedDeal}
+                {...(selectedPlayerNames !== undefined && { playerNames: selectedPlayerNames })}
+              />
             : <p>This game has no Deal tag to display.</p>}
 
           {selectedDoubleDummyTricks !== undefined &&
