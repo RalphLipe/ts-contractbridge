@@ -1328,3 +1328,35 @@ both confirmed before building:
 display of comments once this work is done (specifically comments for the Result tag)." Not
 started; `ParsedSection.comments` already exists and is exactly what a future comments UI would
 feed into `PBNFormattedText`, one string at a time.
+
+## Result tag comment display, the promised follow-up (2026-09)
+Exactly the "specifically comments for the Result tag" work flagged as deferred above.
+- **`packages/contractbridge-react/src/DealResultView.tsx`** (new) — presentational, matching the
+  established component boundary: `{ comments: readonly string[], playedResult?: { tricksTaken,
+  score } }`. Renders `null` (nothing at all) when `comments` is empty — "if the Result tag has a
+  comment" is the outer gate, owned by the component itself so call sites don't need their own
+  `{x.length > 0 && ...}` wrapper. When `playedResult` is present, a `"{tricksTaken} tricks,
+  {+/-}{score}"` line renders above the comments (each comment its own `<p>` via
+  `PBNFormattedText`, so the newline/formatting rules from the previous entry apply here too);
+  when absent, only the comments render.
+- **`apps/pbn-viewer/src/App.tsx` owns the orchestration/decision logic**, per this project's
+  established split (components take ready-made data; apps compute it):
+  `resultComments = selectedGame?.getParsedSection('Result')?.comments ?? []` (reusing
+  `getParsedSection`, unchanged since it was built); `playedResult` is computed only when
+  `getDealOutcome()?.kind === 'played'` **and** `getVulnerable()` is known (the score genuinely
+  can't be computed without knowing vulnerability) — any other case (`passedOut`, no `DealOutcome`
+  at all, vulnerability unknown) leaves `playedResult` `undefined`, falling back to "just the
+  comments," matching Ralph's exact two-case description. Score is the **declarer's own
+  perspective** (a single signed number, e.g. `+420`/`-100`) via the existing
+  `Contract.declarerScore(contract, Vulnerable.isVulDirection(vulnerable, declarer), tricksTaken)`
+  — no new score-computation logic, just composing what already existed. Hit the same
+  `exactOptionalPropertyTypes` conditional-spread need as `DealDiagram`'s `playerNames` prop
+  (`{...(playedResult !== undefined && { playedResult })}`), same established fix.
+- **Verified via the browser tool, three cases in one fixture, in both themes:** Board 1 (Contract
+  4H/Declarer N/Result 10/Vulnerable None, plus a `{...}` comment block with a blank line inside)
+  shows `10 tricks, +420` then the comment with the blank line correctly collapsed to a single line
+  break (not a blank paragraph gap) — confirms the previous entry's newline rule and this new
+  scoring logic compose correctly together; Board 2 (no Contract/Declarer tags, so no
+  `DealOutcome`, but a Result comment) shows only the comment, no tricks/score line; Board 3 (no
+  Result comment at all) shows nothing. 404 tests still pass (no new core tests needed — this is
+  pure composition of already-tested pieces), full workspace typecheck/build clean.

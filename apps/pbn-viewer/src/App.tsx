@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
-import { Direction, PBNDocument } from 'ts-contractbridge'
+import { Contract, Direction, PBNDocument, Vulnerable } from 'ts-contractbridge'
 import type { PBNGame } from 'ts-contractbridge'
-import { AuctionTable, DealDiagram, DoubleDummyTricksView } from 'contractbridge-react'
+import { AuctionTable, DealDiagram, DealResultView, DoubleDummyTricksView } from 'contractbridge-react'
 
 const gameLabel = (game: PBNGame, index: number): string => {
   const board = game.getBoard()
@@ -36,6 +36,24 @@ export function App(): JSX.Element {
   const selectedAuction = selectedGame?.getAuction()
   const selectedDoubleDummyTricks = selectedGame?.getDoubleDummyTricks()
   const selectedPlayerNames = selectedGame?.getPlayerNames()
+
+  const resultComments = selectedGame?.getParsedSection('Result')?.comments ?? []
+  const dealOutcome = selectedGame?.getDealOutcome()
+  const vulnerable = selectedGame?.getVulnerable()
+  // Only a genuine "played" outcome with a known vulnerability (needed to compute the score) gets
+  // the tricks-taken/score line; anything else (passedOut, no DealOutcome at all, vulnerability
+  // unknown) falls back to showing just the comments.
+  const playedResult =
+    dealOutcome?.kind === 'played' && vulnerable !== undefined
+      ? {
+          tricksTaken: dealOutcome.tricksTaken,
+          score: Contract.declarerScore(
+            dealOutcome.declaredContract.contract,
+            Vulnerable.isVulDirection(vulnerable, dealOutcome.declaredContract.declarer),
+            dealOutcome.tricksTaken
+          ),
+        }
+      : undefined
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>
@@ -73,6 +91,11 @@ export function App(): JSX.Element {
             <DoubleDummyTricksView tricks={selectedDoubleDummyTricks} />}
 
           {selectedAuction !== undefined && <AuctionTable auction={selectedAuction} />}
+
+          <DealResultView
+            comments={resultComments}
+            {...(playedResult !== undefined && { playedResult })}
+          />
         </>
       )}
     </main>
