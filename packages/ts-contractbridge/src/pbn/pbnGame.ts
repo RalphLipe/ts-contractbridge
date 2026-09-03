@@ -11,6 +11,7 @@ import { PBNAuction } from './pbnAuction.js'
 import { parseSectionLines } from './parsedSection.js'
 import type { ParsedSection } from './parsedSection.js'
 import { DoubleDummyTricks } from '../doubleDummyTricks.js'
+import type { PlayerNames } from '../playerNames.js'
 
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
@@ -214,6 +215,33 @@ export class PBNGame {
 
   setDoubleDummyTricks(tricks: DoubleDummyTricks): void {
     this.setTag({ name: 'DoubleDummyTricks', value: DoubleDummyTricks.toPBN(tricks) })
+  }
+
+  // Reads the West/North/East/South simple tags into a single PlayerNames value. Unlike most
+  // accessors here, this never returns undefined — PlayerNames already represents "no names
+  // known" as {} (every direction absent), so there's no need for an extra undefined wrapper on
+  // top of that.
+  getPlayerNames(): PlayerNames {
+    const names: Partial<Record<Direction, string>> = {}
+    for (const direction of Direction.all) {
+      const value = this.getTagValue(Direction.name(direction))
+      if (value !== undefined) names[direction] = value
+    }
+    return names
+  }
+
+  // Wholesale replace, matching setDealOutcome's "no stale leftover data" discipline: a direction
+  // missing from `names` has its tag deleted rather than left behind from a previous call.
+  setPlayerNames(names: PlayerNames): void {
+    for (const direction of Direction.all) {
+      const tagName = Direction.name(direction)
+      const name = names[direction]
+      if (name === undefined) {
+        this.deleteSection(tagName)
+      } else {
+        this.setTag({ name: tagName, value: name })
+      }
+    }
   }
 
   // Splits a section's raw lines into tagPair/bodyLines/notes/comments — see ParsedSection. Any

@@ -10,7 +10,7 @@ TypeScript source: /Users/ralphlipe/Documents/GitHub/ts-contractbridge/packages/
 (moved here 2026-08 when the repo became an npm workspace — see "Workspace restructuring" below;
 was a flat repo-root src/ before that.)
 
-## Already ported (19 types)
+## Already ported (20 types)
 - MatchpointCalculator + MatchpointedOutcome → matchpointCalculator.ts / matchpointedOutcome.ts.
   Required adding `DealOutcome.nsScore`/`ewScore` first (deliberately left out when DealOutcome was
   first ported, before Contract.declarerScore existed — now wired up). **Design note:** Swift's
@@ -23,11 +23,19 @@ was a flat repo-root src/ before that.)
   merge. Same "TODO" limitation carried over from Swift: outcomes with no N/S score (AVE/AVE+/AVE-/
   NoScore) are excluded from the matchpointed field entirely rather than being factored in properly.
 - Deal → deal.ts (4-hand card distribution, PBN serialization)
-- DoubleDummyTricks (Swift) → DoubleDummyTable → doubleDummyTable.ts (renamed on the TS side only —
-  Ralph felt "Tricks" implied analysis when it's really just a results table; Swift stays
-  DoubleDummyTricks). {N,E,S,W}: Partial<Record<Strain,number>>; pbn/fromPBN use hex digits, N,S,E,W
+- DoubleDummyTricks → doubleDummyTricks.ts. Briefly renamed to "DoubleDummyTable" on the TS side
+  only (Ralph felt "Tricks" implied analysis when it's really just a results table) — that turned
+  out to be a mistake: `PBNGame`'s accessor then assumed the PBN wire tag was also "DoubleDummyTable"
+  (it isn't — real files use `[DoubleDummyTricks "..."]`), which was a real bug caught loading a
+  real file. Renamed back to `DoubleDummyTricks` everywhere (2026-09) to match both the wire tag and
+  Swift's own type name, eliminating the mismatch at its root — see the dedicated section below for
+  the full story. {N,E,S,W}: Partial<Record<Strain,number>>; pbn/fromPBN use hex digits, N,S,E,W
   order / NT,S,H,D,C strain order per Swift; 'F'=unknown; bogus all-1's filter preserved from Swift.
   Output function is `toPBN`, not `pbn` (see PBNCodable note below).
+- PlayerNames → playerNames.ts (2026-09, new, TS-only concept — Swift models this as a bare
+  `[Direction: String]` computed property directly on `PBN.Game`, no standalone type). Ralph
+  explicitly asked for player names to be a real, independent value type reusable outside PBN, not
+  something PBNGame owns — see the dedicated section below.
 - ScoreCalculator → merged into contract.ts (not its own file) — Swift marks it `internal`, only used
   by Contract.declarerScore, so the TS port keeps the arithmetic as non-exported module-private
   functions and adds Contract.declarerScore/tricksFor/overUnderTricks to the Contract object
@@ -1190,3 +1198,33 @@ and confirmed the translucent blue wash reads correctly in both light and dark m
 read from `swift-contract-bridge` specifically — a similarly-named file in a different local clone
 is not an acceptable substitute, even if it looks identical at a glance. If the relevant file isn't
 found under `swift-contract-bridge`, say so explicitly and ask rather than falling back silently.
+
+## `PlayerNames` — new standalone value type + `PBNGame` accessor (2026-09)
+Ralph's request: a `Direction → name` mapping, supporting rotation, that's genuinely independent of
+PBN as a concept — `PBNGame.getPlayerNames`/`setPlayerNames` just reads/writes it via the West/
+North/East/South simple tags, it doesn't own the type. Checked the Swift reference first (per the
+new standing rule above): `swift-contract-bridge`'s `PBN.Game.playerNames` is just a computed
+`[Direction: String]` property directly on `PBN.Game` — no standalone Swift type exists for this at
+all. Ralph's ask is a deliberate improvement over that shape for the TS port, not a straight port.
+- **`src/playerNames.ts`** (new) — `type PlayerNames = { readonly [direction in Direction]?: string }`,
+  matching the same "optional per key" shape as `Tricks`/`DoubleDummyTricks` (a direction with no
+  known name is genuinely *absent*, not present with an empty string or `undefined` value).
+  `make()`, `withName(names, direction, name)` (same shape as `DoubleDummyTricks.withTricks`),
+  `rotated(names, seats)` (shifts each name to `Direction.rotated(direction, seats)`; a missing
+  direction stays missing after rotating, not reintroduced as an explicit `undefined` key).
+  **No `toPBN`/`fromPBN`** — deliberately not `PBNCodable`, since there's no single-string PBN
+  encoding for "all four names" the way `DoubleDummyTricks` has one hex string; the mapping to/from
+  four independent simple tags is `PBNGame`'s job, not this type's.
+- **`PBNGame.getPlayerNames(): PlayerNames`** — reads whichever of the four tags
+  (`Direction.name(direction)` → "North"/"East"/"South"/"West", reused directly rather than a new
+  mapping table) are present; **never returns `undefined`**, unlike most other `PBNGame` accessors —
+  a deliberate difference, since `PlayerNames` already represents "nothing known" as `{}` (every
+  direction absent), so wrapping that in an extra `| undefined` would just be redundant.
+- **`PBNGame.setPlayerNames(names: PlayerNames): void`** — wholesale replace, matching
+  `setDealOutcome`'s "no stale leftover data" discipline: a direction missing from the new `names`
+  has its tag *deleted*, not left behind from a previous call.
+- **Tests:** new `tests/playerNames.test.ts` (7 cases: empty, `withName` set + leaves-others-alone,
+  and `rotated`'s 4 cases including the "stays genuinely absent" one) plus 5 new cases in
+  `tests/pbn/pbnGame.test.ts` (empty game, reads-whichever-present, round-trip, delete-on-replace,
+  clear-all-via-empty-value). 387 tests total, full workspace typecheck/build clean. No UI component
+  requested this time — `contractbridge-react`/`pbn-viewer` untouched.

@@ -6,6 +6,7 @@ import { Contract } from '../../src/contract.js'
 import { DeclaredContract } from '../../src/declaredContract.js'
 import { DealOutcome } from '../../src/dealOutcome.js'
 import { DoubleDummyTricks } from '../../src/doubleDummyTricks.js'
+import { PlayerNames } from '../../src/playerNames.js'
 
 describe('PBNGame', () => {
   it('defaults to no sections', () => {
@@ -524,6 +525,47 @@ describe('PBNGame', () => {
       game.setDoubleDummyTricks(empty)
       expect(game.sections).toHaveLength(1)
       expect(game.getTagValue('DoubleDummyTricks')).toBe('F'.repeat(20))
+    })
+  })
+
+  describe('getPlayerNames / setPlayerNames', () => {
+    it('is empty for a game with no West/North/East/South tags', () => {
+      const game = new PBNGame()
+      expect(game.getPlayerNames()).toEqual({})
+    })
+
+    it('reads whichever of the four tags are present', () => {
+      const game = new PBNGame([
+        new PBNSection(['[North "Alice"]']),
+        new PBNSection(['[South "Bob"]']),
+      ])
+      expect(game.getPlayerNames()).toEqual({ N: 'Alice', S: 'Bob' })
+    })
+
+    it('setPlayerNames followed by getPlayerNames round-trips', () => {
+      const game = new PBNGame()
+      const names: PlayerNames = { N: 'Alice', E: 'Bob', S: 'Carol', W: 'Dave' }
+      game.setPlayerNames(names)
+      expect(game.getPlayerNames()).toEqual(names)
+      expect(game.getTagValue('West')).toBe('Dave')
+    })
+
+    it('setPlayerNames deletes tags for directions missing from the new value', () => {
+      const game = new PBNGame([
+        new PBNSection(['[North "Alice"]']),
+        new PBNSection(['[South "Bob"]']),
+      ])
+      game.setPlayerNames({ N: 'Eve' })
+      expect(game.getPlayerNames()).toEqual({ N: 'Eve' })
+      expect(game.getTagValue('South')).toBeUndefined()
+    })
+
+    it('setPlayerNames with an empty value clears all four tags', () => {
+      const game = new PBNGame()
+      game.setPlayerNames({ N: 'Alice', E: 'Bob', S: 'Carol', W: 'Dave' })
+      game.setPlayerNames(PlayerNames.make())
+      expect(game.getPlayerNames()).toEqual({})
+      expect(game.sections).toHaveLength(0)
     })
   })
 
