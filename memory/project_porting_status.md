@@ -1256,3 +1256,75 @@ Follow-up to `PlayerNames` above: `DealDiagram` can now show a player's name abo
   fixture with no West/North/East/South tags at all shows no labels anywhere (matching pre-existing
   behavior exactly, confirmed via screenshot + an empty console-error check); both re-confirmed in
   light mode after starting in dark. 387 tests still pass, full workspace typecheck/build clean.
+
+## PBN free-text formatting: `parsePBNFormattedText` + `PBNFormattedText` (2026-09)
+Ralph's ask: PBN comments/notes use their own inline markup convention (checked the Swift
+reference, `swift-contract-bridge/Sources/ContractBridgeUI/StringPBNFormatting.swift`'s
+`String.pbnFormattedAttributedString()`) — `<b>`/`<i>`/`<u>` for bold/italic/underline, `\S \H \D
+\C` for colored suit glyphs, `\n` for an explicit line break — and he wants both comments and notes
+rendered through the same rules. Two explicit corrections to the Swift reference's own behavior,
+both confirmed before building:
+1. **Nested/overlapping tags must resolve correctly** — Swift's version does simple non-nested
+   "find first open, find first close, replace" per tag type, which mishandles something like
+   `<b>foo<i>bar</b>baz</i>`. The TS port uses a real stack of active tags instead (see below), so
+   nesting and even overlapping/malformed tag sequences resolve every run's flags correctly.
+2. **Ordinary line-wraps in the raw PBN source must NOT become visual line breaks** — comments are
+   flowing paragraphs meant to fit whatever container displays them, not fixed-width text. Only two
+   things force a real break: a genuine **blank line** in the source, or the author's own literal
+   `\n` escape — and either one becomes **exactly one** forced break (never two, however many blank
+   lines in a row).
+- **`packages/ts-contractbridge/src/pbn/pbnFormattedText.ts`** (new) —
+  `type PBNTextRun = { kind:'text', text, bold, italic, underline } | { kind:'suit', suit, bold,
+  italic, underline }` (a flat list, not a tree — matches how this markup is actually used) and
+  `parsePBNFormattedText(rawText: string): readonly PBNTextRun[]`.
+  - **`normalizeNewlines`** — splits on real `\n` (exactly what `ParsedSection.comments`/
+    `joinCommentBlock` already produce: lines joined with real newlines, a blank line surviving as
+    an empty array entry). Consecutive non-blank lines join with a plain space (collapsing a
+    source-only line-wrap); one or more consecutive blank lines become exactly one `\n`. Then the
+    author's own literal `\n` (two ordinary characters, backslash + the letter n — not a real
+    newline) is replaced with a real `\n` too, `"\n "` (trailing space) matched first so an explicit
+    break doesn't leave a stray leading space on the next line — same precedence Swift uses.
+  - **Tag/suit tokenization is a single left-to-right scan** with a real `stack: FormatTag[]`
+    (pushed on `<b>`/`<i>`/`<u>`, popped on the matching close — an unmatched close is just
+    ignored, not thrown) — at any point, `\S \H \D \C` becomes a `'suit'` run carrying whatever
+    bold/italic/underline state is currently on the stack (so a suit mentioned inside bold text
+    stays bold — matches Swift's own attribute-preservation, done via a genuinely different
+    mechanism). Suit-escape matching is uppercase-only (`\S` not `\s`), matching Swift exactly.
+  - **`mergeAdjacentText`** (new, not in the Swift reference) — a tag boundary always flushes the
+    current text run, even a no-op one (an unmatched close, or a tag that doesn't actually change
+    any active flag), which can otherwise split what should be one run into two identically-styled
+    adjacent ones. A final merge pass folds those back together, so output is always exactly one
+    run per genuine formatting change — added after a test written for "an unmatched closing tag is
+    ignored" initially expected two runs and the fix (merge, not adjust the test) was clearly the
+    better fix.
+  - Exported from `index.ts` (`parsePBNFormattedText`, `PBNTextRun`).
+  - **Tests:** `tests/pbn/pbnFormattedText.test.ts`, 17 cases — plain text, trimming, all three
+    newline rules (line-wrap collapse, single blank-line break, multiple-blank-lines-still-one-
+    break) plus the two-step explicit-`\n` precedence, using the *exact* text from the real
+    `Responder Rebid.pbn`-shaped comment used elsewhere in this project as one case; bold/italic/
+    underline individually; properly-nested tags; **the specific overlapping-tag case
+    (`<b>foo<i>bar</b>baz</i>`) that would break Swift's own algorithm**, confirming the TS port
+    handles it correctly; unmatched closing tag; suit escapes standalone and inside bold text; one
+    combined "everything together" integration case. 404 tests total in `ts-contractbridge`.
+- **`packages/contractbridge-react/src/PBNFormattedText.tsx`** (new) — `{ text: string }` in,
+  renders each run as a `<span>` (bold/italic/underline via inline styles) or a `<SuitSymbol>` for
+  suit runs (so suit color theming is free/shared, not reimplemented). A single `white-space:
+  pre-line` on the outer wrapping `<span>` is what turns the parser's forced `\n`s back into actual
+  visual line breaks — inherited down to every run's own inner `<span>`, so those don't set it
+  individually. This is the piece that makes "parse once, render as flowing text that still
+  respects explicit breaks" work with zero manual `<br/>`-splitting logic.
+- **`AuctionTable.tsx`'s note list now renders through this** — `<li>{n.note}</li>` became
+  `<li><PBNFormattedText text={n.note} /></li>`, per Ralph's explicit "make auction notes use the
+  new escaped text."
+- **Verified via the browser tool, in both themes:** a note combining suit escapes inside/outside
+  tags, `<b>`/`<i>`, and an explicit `\n` — confirmed correct colored glyphs, bold, italic, and the
+  forced break, with the surrounding prose flowing as intended; a second note with two explicit
+  `\n`s confirmed multiple forced breaks in one string still work. The blank-line-vs-line-wrap
+  newline rule has no live UI call site yet (comment display is explicitly deferred — see below),
+  so it's covered by the Vitest suite only; the CSS `pre-line` rendering mechanism itself is
+  already proven correct by the explicit-`\n` browser checks, since by rendering time both sources
+  produce the identical character.
+**Explicitly deferred, per Ralph:** displaying comments anywhere in `pbn-viewer` — "We will add more
+display of comments once this work is done (specifically comments for the Result tag)." Not
+started; `ParsedSection.comments` already exists and is exactly what a future comments UI would
+feed into `PBNFormattedText`, one string at a time.

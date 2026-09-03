@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react'
 import { Bid, Direction } from 'ts-contractbridge'
 import type { Call, PBNAuction, PBNAuctionCall } from 'ts-contractbridge'
 import { StrainSymbol } from './StrainSymbol.js'
+import { PBNFormattedText } from './PBNFormattedText.js'
 
 // Standard hand-record column order — West first (leftmost), then North, East, South — NOT
 // Direction.all's clockwise-from-North order. This is the conventional layout Ralph asked for,
@@ -83,7 +84,7 @@ export function AuctionTable({ auction }: AuctionTableProps): JSX.Element {
       {notes.length > 0 && (
         <ol>
           {notes.map(n => (
-            <li key={n.noteNumber} value={n.noteNumber}>{n.note}</li>
+            <li key={n.noteNumber} value={n.noteNumber}><PBNFormattedText text={n.note} /></li>
           ))}
         </ol>
       )}
