@@ -18,6 +18,20 @@ export class PBNDocument {
     this.escapedText = escapedText
   }
 
+  // Rewrites the whole document, in place, into export format (PBN spec 2.1 / 3.1 / 3.4): every
+  // game goes through PBNGame.convertToExportFormat, and the header lines "% PBN 2.1" and
+  // "% EXPORT" — the spec's markers for the version and for export format — are put first in
+  // escapedText, added if missing. An existing "% PBN <version>" line is replaced (this is now a
+  // 2.1 export-format document), and a duplicate "% EXPORT" is not added; every other escaped line
+  // keeps its place after those two. Saving is then just writing out what's here. This is lossy —
+  // tags are reordered, duplicates dropped, missing mandatory tags added — so an editor that wants
+  // undo should snapshot first. Calling it again changes nothing.
+  convertToExportFormat(): void {
+    for (const game of this.games) game.convertToExportFormat()
+    const others = this.escapedText.filter(line => !/^%\s*PBN\s+\d/.test(line) && !/^%\s*EXPORT\s*$/.test(line))
+    this.escapedText.splice(0, this.escapedText.length, '% PBN 2.1', '% EXPORT', ...others)
+  }
+
   // Parses raw PBN text into games/sections. Never fails and never discards a line — every line
   // of input ends up somewhere (escapedText, or some game's some section's lines), verbatim, with
   // no trimming/normalization of its content. Only structural decisions (is this line blank? does

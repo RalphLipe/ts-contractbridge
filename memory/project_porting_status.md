@@ -1498,3 +1498,43 @@ null when `comments` was empty). Fixed both:
 - **Not done, deliberately (out of scope):** Swift also shows "Passed out" for `Contract "Pass"`;
   `getDeclaredContract()` is undefined for that, so the viewer shows nothing extra. Also unchanged:
   comments outside the Result section (e.g. a global `{...}` block) are still not displayed.
+
+## Export format: `convertToExportFormat()` on PBNGame and PBNDocument (2026-09)
+First half of saving a PBN file. Ralph's design: **make the in-memory document BE export format
+before saving, so `save()` (next step, not built) is pure serialization** — no hidden transform, and
+`fromPBN(toPBN(doc))` should round-trip. Explicit in-place mutation, consistent with
+`PBNDocument`'s mutability; it is **lossy**, so an editor wanting undo should snapshot first.
+Named `convertToExportFormat` (not `make…`, which in this codebase means "returns a new value").
+- **`PBNGame.convertToExportFormat()`** — order per spec 3.1/3.4: (1) comments before the first tag
+  (the untagged "global" section); (2) the 15 mandatory tags in fixed order (Event Site Date Board
+  West North East South Dealer Vulnerable Deal Scoring Declarer Contract Result); (3) other
+  single-line tags sorted by name; (4) Auction then Play; (5) supplemental *sections* (a tag with
+  table body lines — decided via `parseSectionLines(...).bodyLines.length > 0`) sorted by name.
+  Matches BridgeComposer's real files (`BCFlags` before Auction, `OptimumResultTable` last).
+- **Ralph's decisions:** a missing mandatory tag is added with value **`""`** (NOT the spec's `"?"`,
+  which `DealDiagram` would display as a player name — it only hides empty names; BridgeComposer
+  also writes `""`). **Auction and Play are not rewritten at all** — only reordered, lines verbatim
+  (re-serializing would drop comments and can't parse `-` padding / `^` irregularities).
+- **Also done:** duplicate tags keep the FIRST (matches `getTagValue` and the spec's import rule;
+  names compared case-insensitively); each section's tag line rewritten canonically
+  (`[Name "Value"]`, trimmed) and a mandatory tag's name gets canonical capitalization; comments/
+  notes travel with the tag they follow. Auction/Play tag lines are left exactly as written.
+  A game with no tagged sections (just a stray comment) is left alone rather than given 15 tags.
+  Idempotent; keeps the same `_sections` array (splice, not reassignment).
+- **`PBNDocument.convertToExportFormat()`** — converts every game, then puts `% PBN 2.1` and
+  `% EXPORT` FIRST in `escapedText` (added if absent, no duplicates; any existing `% PBN <ver>` line
+  is replaced by 2.1; other `%` lines keep their order after those). The header lives in
+  `escapedText` so the doc really equals the saved file. Regexes are anchored so `%PBNsomething` /
+  `% EXPORTED…` aren't mistaken for the header.
+- **Deliberately NOT done (say so if wanted):** tag VALUE normalization — spec says export uses
+  `None`/`All` for Vulnerable (so `Love`/`-`/`Both` stay as written), `Result` should be declarer
+  tricks, Deal ranks in order, uppercase, etc.; tab removal (export forbids tabs); the 255-char line
+  limit; inferring a missing Dealer from Board. Body lines of every section are untouched.
+- **For `save()`:** CRLF line endings, a blank line between games (none before the first), and text
+  encoding — BridgeComposer files declare `%Content-type: text/x-pbn; charset=ISO-8859-1`; decide
+  whether to write Latin-1 or UTF-8.
+- **Tests (24 new; 504 total):** ordering, fill-in, sorting, duplicates, canonical names/lines,
+  comments, verbatim Auction/Play/table bodies, idempotence, header rules, plus a real-data check:
+  `hand-record-1/2.pbn` and `TOB L5 Hands.pbn` (already export format) are **unchanged** by the
+  conversion, and `Open4thSeat.pbn` (not export format) comes out with all 15 tags in order.
+  Not committed.

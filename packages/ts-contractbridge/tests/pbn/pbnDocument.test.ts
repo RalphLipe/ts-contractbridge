@@ -216,4 +216,83 @@ describe('PBNDocument', () => {
     })
   
   })
+
+  describe('convertToExportFormat', () => {
+    it('adds "% PBN 2.1" and "% EXPORT" as the first escaped lines when they are missing', () => {
+      const doc = PBNDocument.fromPBN('%Creator: Example\n[Board "1"]\n')
+      doc.convertToExportFormat()
+      expect(doc.escapedText).toEqual(['% PBN 2.1', '% EXPORT', '%Creator: Example'])
+    })
+
+    it('adds the header even to a document with no escaped text or no games', () => {
+      const doc = new PBNDocument()
+      doc.convertToExportFormat()
+      expect(doc.escapedText).toEqual(['% PBN 2.1', '% EXPORT'])
+    })
+
+    it('does not duplicate header lines that are already there, and moves them first', () => {
+      const doc = new PBNDocument([], ['%Creator: Example', '% EXPORT', '% PBN 2.1', '%Other'])
+      doc.convertToExportFormat()
+      expect(doc.escapedText).toEqual(['% PBN 2.1', '% EXPORT', '%Creator: Example', '%Other'])
+    })
+
+    it('replaces a different version line with 2.1', () => {
+      const doc = new PBNDocument([], ['% PBN 2.0', '%Other'])
+      doc.convertToExportFormat()
+      expect(doc.escapedText).toEqual(['% PBN 2.1', '% EXPORT', '%Other'])
+    })
+
+    it('does not mistake other escaped lines for the header', () => {
+      const doc = new PBNDocument([], ['%PBNsomething', '% EXPORTED by tool'])
+      doc.convertToExportFormat()
+      expect(doc.escapedText).toEqual(['% PBN 2.1', '% EXPORT', '%PBNsomething', '% EXPORTED by tool'])
+    })
+
+    it('converts every game', () => {
+      const doc = PBNDocument.fromPBN('[Result "9"]\n[Board "1"]\n\n[Result "10"]\n[Board "2"]\n')
+      doc.convertToExportFormat()
+      expect(doc.games).toHaveLength(2)
+      for (const game of doc.games) {
+        expect(game.sections).toHaveLength(15)
+        expect(game.sections[3]!.tagPair!.name).toBe('Board')
+        expect(game.sections[14]!.tagPair!.name).toBe('Result')
+      }
+    })
+
+    it('is idempotent', () => {
+      const doc = PBNDocument.fromPBN('%X\n[Result "9"]\n[Zed "z"]\n[Board "1"]\n\n[Board "2"]\n')
+      doc.convertToExportFormat()
+      const snapshot = (): string[][] => [doc.escapedText, ...doc.games.map(g => g.sections.flatMap(s => [...s.lines]))]
+      const once = JSON.stringify(snapshot())
+      doc.convertToExportFormat()
+      expect(JSON.stringify(snapshot())).toBe(once)
+    })
+
+    // These files were written by BridgeComposer, which already emits export format — so
+    // converting them must change nothing. A strong check of the ordering rules against real data.
+    it.each(['hand-record-1.pbn', 'hand-record-2.pbn', 'TOB L5 Hands.pbn'])(
+      'leaves %s, already in export format, unchanged',
+      name => {
+        const doc = PBNDocument.fromPBN(readTestData(name))
+        const before = JSON.stringify([doc.escapedText, ...doc.games.map(g => g.sections.map(s => s.lines))])
+        doc.convertToExportFormat()
+        const after = JSON.stringify([doc.escapedText, ...doc.games.map(g => g.sections.map(s => s.lines))])
+        expect(after).toBe(before)
+      }
+    )
+
+    it('brings a file that is not in export format into it, keeping every game', () => {
+      const doc = PBNDocument.fromPBN(readTestData('Open4thSeat.pbn'))
+      const gameCount = doc.games.length
+      doc.convertToExportFormat()
+      expect(doc.games).toHaveLength(gameCount)
+      for (const game of doc.games) {
+        expect(game.sections.slice(0, 15).map(s => s.tagPair!.name)).toEqual([
+          'Event', 'Site', 'Date', 'Board', 'West', 'North', 'East', 'South',
+          'Dealer', 'Vulnerable', 'Deal', 'Scoring', 'Declarer', 'Contract', 'Result',
+        ])
+        expect(game.getAuction()).toBeDefined()
+      }
+    })
+  })
 })

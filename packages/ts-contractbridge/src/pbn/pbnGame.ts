@@ -15,6 +15,18 @@ import type { Card } from '../card.js'
 import { DoubleDummyTricks } from '../doubleDummyTricks.js'
 import type { PlayerNames } from '../playerNames.js'
 
+// The 15 tags of the spec's Mandatory Tag Set (MTS), in the order export format requires them.
+const mandatoryTagNames = [
+  'Event', 'Site', 'Date', 'Board', 'West', 'North', 'East', 'South',
+  'Dealer', 'Vulnerable', 'Deal', 'Scoring', 'Declarer', 'Contract', 'Result',
+] as const
+
+const compareTagNames = (a: PBNSection, b: PBNSection): number => {
+  const nameA = a.tagPair!.name
+  const nameB = b.tagPair!.name
+  return nameA < nameB ? -1 : nameA > nameB ? 1 : 0
+}
+
 // A game's sections are read-only from the outside — the only way to add or replace one is
 // setSection, which keeps "one section per tag name" as an invariant rather than something
 // callers have to maintain by hand.
@@ -295,6 +307,73 @@ export class PBNGame {
         this.setTag({ name: tagName, value: name })
       }
     }
+  }
+
+  // Rewrites this game, in place, into the PBN spec's export-format layout (sections 3.1 and 3.4):
+  //   1. any comments before the first tag (the "global" section), untouched
+  //   2. the 15 mandatory tags, in their fixed order — a missing one is added with the value ""
+  //      (matching what BridgeComposer writes, rather than the spec's "?", which a viewer would
+  //      show as a name)
+  //   3. every other single-line tag, sorted by tag name
+  //   4. Auction, then Play — left exactly as written, lines and all
+  //   5. supplemental sections (a tag followed by table data), sorted by tag name
+  // A tag that appears more than once keeps only its first occurrence, which is also the one
+  // getTagValue reads and the one import format says wins. Comments and notes stay with the tag
+  // they follow. Each section's tag line is rewritten in canonical form ([Name "Value"], no stray
+  // spaces), and a mandatory tag's name gets its canonical capitalization; nothing else inside a
+  // section is touched. Only ordering, de-duplication and those two normalizations happen here —
+  // tag values are NOT normalized (e.g. Vulnerable "Love" stays "Love"), and tabs / over-long lines
+  // are not fixed. Calling it again changes nothing. A game with no tags at all (just comments)
+  // has nothing to identify, so it is left alone rather than turned into fifteen empty tags.
+  convertToExportFormat(): void {
+    if (!this._sections.some(section => section.tagPair !== undefined)) return
+
+    const global: PBNSection[] = []
+    const mandatory = new Map<string, PBNSection>()
+    const simple: PBNSection[] = []
+    const tables: PBNSection[] = []
+    let auction: PBNSection | undefined
+    let play: PBNSection | undefined
+    const seen = new Set<string>()
+
+    // The same section with its tag line rewritten canonically; everything after the tag line is
+    // carried over exactly.
+    const withCanonicalTagLine = (section: PBNSection, name: string): PBNSection =>
+      new PBNSection([formatTagLine({ name, value: section.tagPair!.value }), ...section.lines.slice(1)])
+
+    for (const section of this._sections) {
+      const tag = section.tagPair
+      if (tag === undefined) {
+        global.push(section)
+        continue
+      }
+      const key = tag.name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      const mandatoryName = mandatoryTagNames.find(name => name.toLowerCase() === key)
+      if (mandatoryName !== undefined) {
+        mandatory.set(mandatoryName, withCanonicalTagLine(section, mandatoryName))
+      } else if (key === 'auction') {
+        auction = section
+      } else if (key === 'play') {
+        play = section
+      } else if (parseSectionLines(section.lines).bodyLines.length > 0) {
+        tables.push(withCanonicalTagLine(section, tag.name))
+      } else {
+        simple.push(withCanonicalTagLine(section, tag.name))
+      }
+    }
+
+    const ordered = [
+      ...global,
+      ...mandatoryTagNames.map(name => mandatory.get(name) ?? new PBNSection([formatTagLine({ name, value: '' })])),
+      ...simple.sort(compareTagNames),
+      ...(auction !== undefined ? [auction] : []),
+      ...(play !== undefined ? [play] : []),
+      ...tables.sort(compareTagNames),
+    ]
+    this._sections.splice(0, this._sections.length, ...ordered)
   }
 
   // Splits a section's raw lines into tagPair/bodyLines/notes/comments — see ParsedSection. Any

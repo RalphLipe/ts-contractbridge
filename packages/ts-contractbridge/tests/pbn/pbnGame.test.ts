@@ -724,6 +724,121 @@ describe('PBNGame', () => {
     })
   })
 
+  describe('convertToExportFormat', () => {
+    const mandatory = [
+      'Event', 'Site', 'Date', 'Board', 'West', 'North', 'East', 'South',
+      'Dealer', 'Vulnerable', 'Deal', 'Scoring', 'Declarer', 'Contract', 'Result',
+    ]
+    const gameOf = (...sections: string[][]): PBNGame => new PBNGame(sections.map(lines => new PBNSection(lines)))
+    const names = (game: PBNGame): (string | undefined)[] => game.sections.map(s => s.tagPair?.name)
+    const lines = (game: PBNGame): string[] => game.sections.flatMap(s => [...s.lines])
+
+    it('puts the mandatory tags in their fixed order', () => {
+      const game = gameOf(['[Result "9"]'], ['[Dealer "N"]'], ['[Event "E"]'], ['[Board "3"]'])
+      game.convertToExportFormat()
+      expect(names(game)).toEqual(mandatory)
+    })
+
+    it('adds each missing mandatory tag as an empty string, keeping the values that are there', () => {
+      const game = gameOf(['[Dealer "N"]'], ['[Board "3"]'])
+      game.convertToExportFormat()
+      expect(game.getTagValue('Dealer')).toBe('N')
+      expect(game.getTagValue('Board')).toBe('3')
+      expect(game.sections.find(s => s.tagPair?.name === 'Event')!.lines).toEqual(['[Event ""]'])
+      expect(game.sections.find(s => s.tagPair?.name === 'Result')!.lines).toEqual(['[Result ""]'])
+      expect(game.sections).toHaveLength(15)
+    })
+
+    it('puts other single-line tags after the mandatory ones, sorted by name', () => {
+      const game = gameOf(['[Zebra "z"]'], ['[Result "9"]'], ['[Annotator "a"]'], ['[Mid "m"]'])
+      game.convertToExportFormat()
+      expect(names(game).slice(15)).toEqual(['Annotator', 'Mid', 'Zebra'])
+    })
+
+    it('orders identification tags, then Auction, then Play, then table sections sorted by name', () => {
+      const game = gameOf(
+        ['[Zed "table"]', 'row 1'],
+        ['[Play "W"]', 'SK H3 S4 S3'],
+        ['[Alpha "table"]', 'row 2'],
+        ['[Auction "N"]', '1C Pass Pass Pass'],
+        ['[Generator "x"]'],
+        ['[Deal "N:..."]']
+      )
+      game.convertToExportFormat()
+      expect(names(game).slice(15)).toEqual(['Generator', 'Auction', 'Play', 'Alpha', 'Zed'])
+      expect(names(game).indexOf('Deal')).toBe(10)
+    })
+
+    it('leaves the Auction and Play sections exactly as written', () => {
+      const auction = ['[auction "N"]', '  1C   Pass  ', '{ a comment }', 'Pass Pass', '[Note "1:something"]']
+      const play = [' [Play "W"]', 'SK\tH3 S4 S3', '; remark']
+      const game = gameOf(play, auction, ['[Board "1"]'])
+      game.convertToExportFormat()
+      expect(game.sections.find(s => s.tagPair?.name === 'auction')!.lines).toEqual(auction)
+      expect(game.sections.find(s => s.tagPair?.name === 'Play')!.lines).toEqual(play)
+    })
+
+    it('leaves the body of a table section alone', () => {
+      const table = ['[OptimumResultTable "Declarer;Denomination\\2R;Result\\2R"]', 'N NT  8', 'N  S  9']
+      const game = gameOf(table)
+      game.convertToExportFormat()
+      expect(game.sections.find(s => s.tagPair?.name === 'OptimumResultTable')!.lines).toEqual(table)
+    })
+
+    it('keeps only the first occurrence of a repeated tag, matching names case-insensitively', () => {
+      const game = gameOf(['[Board "1"]'], ['[Dealer "N"]'], ['[board "2"]'], ['[Board "3"]'], ['[Extra "a"]'], ['[Extra "b"]'])
+      game.convertToExportFormat()
+      expect(game.getTagValue('Board')).toBe('1')
+      expect(names(game).filter(n => n?.toLowerCase() === 'board')).toHaveLength(1)
+      expect(game.getTagValue('Extra')).toBe('a')
+      expect(names(game).filter(n => n === 'Extra')).toHaveLength(1)
+    })
+
+    it('capitalizes a mandatory tag name canonically, and tidies the tag line', () => {
+      const game = gameOf(['  [dealer "N"]  '], ['[EVENT "Big Event"]'])
+      game.convertToExportFormat()
+      expect(game.sections.find(s => s.tagPair?.name === 'Dealer')!.lines).toEqual(['[Dealer "N"]'])
+      expect(game.sections.find(s => s.tagPair?.name === 'Event')!.lines).toEqual(['[Event "Big Event"]'])
+    })
+
+    it('keeps the comments before the first tag, first', () => {
+      const game = gameOf(['{ about this game }'], ['[Board "1"]'])
+      game.convertToExportFormat()
+      expect(game.sections[0]!.lines).toEqual(['{ about this game }'])
+      expect(game.sections[0]!.tagPair).toBeUndefined()
+      expect(names(game).slice(1)).toEqual(mandatory)
+    })
+
+    it('keeps a comment with the tag it follows when that tag moves', () => {
+      const game = gameOf(['[Result "9"]', '{ made an overtrick }'], ['[Board "1"]'])
+      game.convertToExportFormat()
+      const at = lines(game).indexOf('[Result "9"]')
+      expect(lines(game)[at + 1]).toBe('{ made an overtrick }')
+    })
+
+    it('does not touch a game with no tags, just comments', () => {
+      const game = gameOf(['{ a stray note between games }'])
+      game.convertToExportFormat()
+      expect(lines(game)).toEqual(['{ a stray note between games }'])
+    })
+
+    it('does not touch tag values', () => {
+      const game = gameOf(['[Vulnerable "Love"]'], ['[Deal "N:.63.AKQ987.A9732 A8654.KQ5.T.QJT6 J973.J98742.3.K4 KQT2.AT.J6542.85"]'])
+      game.convertToExportFormat()
+      expect(game.getTagValue('Vulnerable')).toBe('Love')
+    })
+
+    it('is idempotent, and keeps the same underlying sections array', () => {
+      const game = gameOf(['[Zed "z"]'], ['[Play "W"]', 'SK'], ['[Dealer "n"]'], ['[T "t"]', 'row'])
+      const sections = game.sections
+      game.convertToExportFormat()
+      const once = lines(game)
+      game.convertToExportFormat()
+      expect(lines(game)).toEqual(once)
+      expect(game.sections).toBe(sections)
+    })
+  })
+
   describe('getParsedSection', () => {
     it('finds the section by tag name and splits it into tagPair/bodyLines/notes/comments', () => {
       const game = new PBNGame([
