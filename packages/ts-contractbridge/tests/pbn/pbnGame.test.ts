@@ -694,6 +694,17 @@ describe('PBNGame', () => {
       expect(gameWithPlay('SK H3 S4 S3').getOpeningLead()).toEqual({ position: 'W', card: 'SK' })
     })
 
+    it('includes the note on the opening lead when it has one', () => {
+      const game = gameWithPlay('SK =1= H3 S4 S3', '[Note "1:highest of series"]')
+      expect(game.getOpeningLead()).toEqual({ position: 'W', card: 'SK', note: 'highest of series' })
+    })
+
+    it('omits the note entirely when the lead has none, even if a later card does', () => {
+      const game = gameWithPlay('SK H3 =1= S4 S3', '[Note "1:ruff"]')
+      expect(game.getOpeningLead()).toEqual({ position: 'W', card: 'SK' })
+      expect('note' in game.getOpeningLead()!).toBe(false)
+    })
+
     it('reports the lead of a play that has only just begun', () => {
       expect(gameWithPlay('DA +').getOpeningLead()).toEqual({ position: 'W', card: 'DA' })
     })

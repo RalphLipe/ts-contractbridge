@@ -1449,11 +1449,32 @@ Same shape as `PBNAuction`: immutable value + a same-named namespace object, not
   example (`- - - H2` then `*`) load. **`+`** (recommended-not-required) is emitted for an unfinished
   unterminated play and accepted only as the last real token; **`*`** = `terminated`, own line.
   Irregularity tokens (`^I ^S ^R ^L`) are rejected — "only legitimate play".
-- **`PBNGame.getOpeningLead()`** — getter only (no setter): `{ position, card } | undefined` from
-  the first card of `getPlay()`. Undefined if no usable Play, no cards yet, or the lead is `-`.
+- **`PBNGame.getOpeningLead()`** — getter only (no setter): `{ position, card, note? } | undefined`
+  from the first card of `getPlay()` (`note` present only if that card has one). Undefined if no usable Play, no cards yet, or the lead is `-`.
 - Also: `tricks(play)` (leader/cards/winner per trick), `nextToAct`, `isComplete`, `undoingLast`
   (clears `*` too), `terminating` (no-op at 52 cards), `rotated`.
 - Verified against the spec's 5HX example: hand-traced every trick winner
   (`N W N E S E, then unresolved`) and the round-trip re-encodes it exactly.
 - **Not built:** UI for Play (no `contractbridge-react` component, no viewer change); validating
   cards against a Deal; a `setAuction` counterpart to `setPlay` (none exists for Auction either).
+
+## PBN Viewer shows the opening lead (2026-09)
+- New `contractbridge-react` component `OpeningLeadView` (`{ position, card, note? }` — the same shape
+  `PBNGame.getOpeningLead()` returns, so `App.tsx` spreads the result straight in). One line:
+  "Opening lead: West ♠K — <note>". Rank shown as `T` (not `10`), matching `HandDiagram`. The note
+  goes through `PBNFormattedText`, so `\S`-style suit escapes and `<b>` etc. work in it.
+- `App.tsx` calls `getOpeningLead()` and renders the view **after the auction, before the Result
+  comments**; nothing renders when there's no usable lead. Component stays presentational — the
+  app owns the lookup.
+- Gotcha hit while verifying: `apps/pbn-viewer` and `contractbridge-react` typecheck against
+  `packages/ts-contractbridge/dist` (its package.json `types`), which is gitignored — after adding a
+  core method, `npm run build --workspace=packages/ts-contractbridge` before typechecking them, or
+  you get "Property does not exist on type 'PBNGame'".
+- **Heart glyph fix (in `SuitSymbol`, so it applies to hands, auction, notes and the lead line):**
+  the ♥ in the lead line/auction table looked fatter than the hand diagram's. NOT a colour-emoji
+  problem, as first suspected — U+FE0E and `font-variant-emoji: text` were tried and change nothing.
+  It's the font: macOS `system-ui`/Helvetica/`sans-serif` have a rounder, heavier ♥ than Menlo/Arial/
+  serif. `SuitSymbol` now pins `fontFamily: 'Menlo, Consolas, "DejaVu Sans Mono", monospace'`; Menlo
+  is what the hand diagram's monospace already resolved to, so its look is unchanged.
+- Verified in the browser tool with the spec's Play example (lead + note, incl. a `\S` in the note)
+  and a note-less game; heart fix checked with an auction + auction note + lead note. Not deployed.

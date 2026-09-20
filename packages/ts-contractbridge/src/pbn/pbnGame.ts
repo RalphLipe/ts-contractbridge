@@ -233,13 +233,19 @@ export class PBNGame {
     return PBNPlay.fromPBNSection(section.lines, declaredContract)
   }
 
-  // Getter only: who led, and what they led, read off the first card of getPlay(). Undefined if
-  // there's no usable Play section, no card has been played yet, or the opening lead is the
-  // unknown "-" card (there's no card to report). The position is always the declarer's
-  // left-hand opponent, since that's the only opening leader PBNPlay accepts.
-  getOpeningLead(): { readonly position: Direction; readonly card: Card } | undefined {
+  // Getter only: who led, what they led, and the note on that card if it has one (e.g. "highest of
+  // series"), read off the first card of getPlay(). Undefined if there's no usable Play section, no
+  // card has been played yet, or the opening lead is the unknown "-" card (there's no card to
+  // report). The position is always the declarer's left-hand opponent, since that's the only
+  // opening leader PBNPlay accepts.
+  getOpeningLead(): { readonly position: Direction; readonly card: Card; readonly note?: string } | undefined {
     const first = this.getPlay()?.cards[0]
-    return first?.card === undefined ? undefined : { position: first.position, card: first.card }
+    if (first?.card === undefined) return undefined
+    return {
+      position: first.position,
+      card: first.card,
+      ...(first.note !== undefined && { note: first.note }),
+    }
   }
 
   // Writes only the Play section. It doesn't touch Declarer/Contract, so the play's own
