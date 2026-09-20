@@ -1538,3 +1538,31 @@ Named `convertToExportFormat` (not `make…`, which in this codebase means "retu
   `hand-record-1/2.pbn` and `TOB L5 Hands.pbn` (already export format) are **unchanged** by the
   conversion, and `Open4thSeat.pbn` (not export format) comes out with all 15 tags in order.
   Not committed.
+
+## Saving: `PBNDocument.toPBN(lineBreak = '\r\n')` (2026-09)
+Second half of saving (after `convertToExportFormat`). The core library only produces a string — no
+file I/O, no encoding to bytes; the app layer encodes and writes it. Named `toPBN` to mirror
+`fromPBN`/`PBNCodable`.
+- **`toPBN(lineBreak: string = '\r\n'): string`** — serializes the document AS IT STANDS (no
+  conversion; call `convertToExportFormat()` first for an export file). Lines joined with
+  `lineBreak`, every line including the last terminated; default CRLF (the spec's export line end),
+  pass `'\n'` for a Unix-style file. Layout: escaped header lines, then games with exactly ONE empty
+  line between games (none before the first / after the last) — what BridgeComposer's files do. A game
+  with zero lines is skipped (else a double blank line). Empty document → `''`.
+- **Ralph's decision (2026-09): ignore the spec's character-set rule.** An earlier version of this
+  step also had `toPBNBytes()` (ISO 8859-1, `?` for unrepresentable chars) and static
+  `fromPBNBytes()` (UTF-8 if valid, else Latin 1). Ralph had them REMOVED — only `toPBN` exists. Do not
+  re-add byte/encoding methods to the core without being asked.
+- **Known quirk (pre-existing, not fixed):** `fromPBN` sends any `%` line that appears while no
+  section is open to `escapedText` wherever it is in the file, so `toPBN` writes such lines at the
+  top, not where they were. BridgeComposer files only have them in the header, so unaffected.
+- **Viewer NOT changed, and has a latent bug:** `apps/pbn-viewer/src/App.tsx` reads files with
+  `file.text()` (UTF-8 only), so a genuine Latin-1 file with accented characters loads with U+FFFD.
+  Not addressed (all five test-data files are pure ASCII). Since encoding is now the app's job, any
+  future save code in an app owns its own choice of encoding.
+- **Not built:** any Save UI / download in an app; the charset header BridgeComposer writes
+  (`%Content-type: text/x-pbn; charset=ISO-8859-1`) is not added by `convertToExportFormat`.
+- **Tests (18 new for this step; 522 total):** layout/CRLF/separators, custom line break (`\n`, `\r`),
+  skipped empty games, blank line inside a `{}` comment, round trip of all 5 fixtures,
+  **byte-for-byte reproduction of `hand-record-1/2.pbn`** (CRLF default) and of `TOB L5 Hands.pbn`
+  (with `toPBN('\n')`), and converted-then-saved header.

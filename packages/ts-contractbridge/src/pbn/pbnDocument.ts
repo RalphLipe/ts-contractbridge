@@ -18,6 +18,29 @@ export class PBNDocument {
     this.escapedText = escapedText
   }
 
+  // Serializes the document exactly as it stands — no conversion happens here (see
+  // convertToExportFormat for that, which is meant to be called first when the goal is an
+  // export-format file). Lines are joined with `lineBreak`, and every line, the last included,
+  // ends with one. It defaults to CRLF, the spec's end-of-line for export format; pass "\n" for
+  // a Unix-style file. Layout matches the real files this was checked against: the escaped header
+  // lines first, then the games with exactly one empty line between one game and the next (none
+  // before the first game or after the last). A game with no lines at all writes nothing, so it
+  // can't produce a double blank line. Returns a string — encoding it to bytes (and writing it
+  // anywhere) is the caller's business. Round-trips with fromPBN, except that fromPBN treats any
+  // "%" line outside a game as header text wherever it appeared, so such lines come out at the top.
+  toPBN(lineBreak: string = '\r\n'): string {
+    const lines: string[] = [...this.escapedText]
+    let wroteGame = false
+    for (const game of this.games) {
+      const gameLines = game.sections.flatMap(section => section.lines)
+      if (gameLines.length === 0) continue
+      if (wroteGame) lines.push('')
+      lines.push(...gameLines)
+      wroteGame = true
+    }
+    return lines.length === 0 ? '' : lines.join(lineBreak) + lineBreak
+  }
+
   // Rewrites the whole document, in place, into export format (PBN spec 2.1 / 3.1 / 3.4): every
   // game goes through PBNGame.convertToExportFormat, and the header lines "% PBN 2.1" and
   // "% EXPORT" — the spec's markers for the version and for export format — are put first in

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { PBNDocument } from '../../src/pbn/pbnDocument.js'
 import { PBNGame } from '../../src/pbn/pbnGame.js'
+import { PBNSection } from '../../src/pbn/pbnSection.js'
 
 const readTestData = (name: string): string =>
   readFileSync(new URL(`../../test-data/${name}`, import.meta.url), 'utf8')
@@ -293,6 +294,85 @@ describe('PBNDocument', () => {
         ])
         expect(game.getAuction()).toBeDefined()
       }
+    })
+  })
+
+  describe('toPBN', () => {
+    const allFiles = ['hand-record-1.pbn', 'hand-record-2.pbn', 'TOB L5 Hands.pbn', 'Open4thSeat.pbn', 'Responder Rebid.pbn']
+
+    it('is an empty string for an empty document', () => {
+      expect(new PBNDocument().toPBN()).toBe('')
+    })
+
+    it('writes header lines, then games separated by one empty line, every line ending in CRLF', () => {
+      const doc = PBNDocument.fromPBN('%Header\n[Board "1"]\n[Dealer "N"]\n\n[Board "2"]\n')
+      expect(doc.toPBN()).toBe('%Header\r\n[Board "1"]\r\n[Dealer "N"]\r\n\r\n[Board "2"]\r\n')
+    })
+
+    it('has no empty line before the first game or after the last', () => {
+      const text = new PBNDocument([new PBNGame([new PBNSection(['[Board "1"]'])])], ['%H']).toPBN()
+      expect(text).toBe('%H\r\n[Board "1"]\r\n')
+    })
+
+    it('writes a game\'s sections in order, comments and body lines included', () => {
+      const doc = PBNDocument.fromPBN('{ before }\n[Auction "N"]\n1C Pass\n{ note }\nPass Pass\n[Note "1:x"]\n')
+      expect(doc.toPBN()).toBe('{ before }\r\n[Auction "N"]\r\n1C Pass\r\n{ note }\r\nPass Pass\r\n[Note "1:x"]\r\n')
+    })
+
+    it('skips a game with no lines, so it cannot cause a double blank line', () => {
+      const doc = new PBNDocument([
+        new PBNGame([new PBNSection(['[Board "1"]'])]),
+        new PBNGame(),
+        new PBNGame([new PBNSection(['[Board "2"]'])]),
+      ])
+      expect(doc.toPBN()).toBe('[Board "1"]\r\n\r\n[Board "2"]\r\n')
+    })
+
+    it('keeps an empty line inside a comment block', () => {
+      const text = '[Result "9"]\r\n{ first paragraph\r\n\r\nsecond paragraph }\r\n'
+      expect(PBNDocument.fromPBN(text).toPBN()).toBe(text)
+    })
+
+    it.each(allFiles)('round-trips %s: parsing what toPBN wrote gives the same document', name => {
+      const doc = PBNDocument.fromPBN(readTestData(name))
+      const again = PBNDocument.fromPBN(doc.toPBN())
+      const shape = (d: PBNDocument): unknown => [d.escapedText, ...d.games.map(g => g.sections.map(sec => sec.lines))]
+      expect(shape(again)).toEqual(shape(doc))
+    })
+
+    // BridgeComposer's files use exactly the layout export format asks for, so writing one back out
+    // must reproduce the original text exactly.
+    it.each(['hand-record-1.pbn', 'hand-record-2.pbn'])('reproduces %s byte for byte', name => {
+      const text = readTestData(name)
+      expect(PBNDocument.fromPBN(text).toPBN()).toBe(text)
+    })
+
+    it('reproduces TOB L5 Hands.pbn apart from its LF line endings becoming CRLF', () => {
+      const text = readTestData('TOB L5 Hands.pbn')
+      expect(PBNDocument.fromPBN(text).toPBN()).toBe(text.replace(/\r\n|\r|\n/g, '\r\n'))
+    })
+
+    it('uses the given line break instead of CRLF', () => {
+      const doc = PBNDocument.fromPBN('%H\n[Board "1"]\n\n[Board "2"]\n')
+      expect(doc.toPBN('\n')).toBe('%H\n[Board "1"]\n\n[Board "2"]\n')
+      expect(doc.toPBN('\r')).toBe('%H\r[Board "1"]\r\r[Board "2"]\r')
+    })
+
+    it('reproduces a Unix-style file exactly when asked for LF', () => {
+      const text = readTestData('TOB L5 Hands.pbn')
+      expect(PBNDocument.fromPBN(text).toPBN('\n')).toBe(text)
+    })
+
+    it('an empty document is still an empty string with any line break', () => {
+      expect(new PBNDocument().toPBN('\n')).toBe('')
+    })
+
+    it('after convertToExportFormat, writes a file that starts with the export header and 15 tags', () => {
+      const doc = PBNDocument.fromPBN(readTestData('Open4thSeat.pbn'))
+      doc.convertToExportFormat()
+      const text = doc.toPBN()
+      expect(text.startsWith('% PBN 2.1\r\n% EXPORT\r\n[Event "Open hand in 3rd seat we won\'t in 4th"]\r\n[Site ""]\r\n')).toBe(true)
+      expect(text.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/) // no bare CR or LF anywhere
     })
   })
 })
