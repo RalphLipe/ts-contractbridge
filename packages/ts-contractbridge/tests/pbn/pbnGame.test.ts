@@ -7,6 +7,8 @@ import { DeclaredContract } from '../../src/declaredContract.js'
 import { DealOutcome } from '../../src/dealOutcome.js'
 import { DoubleDummyTricks } from '../../src/doubleDummyTricks.js'
 import { PlayerNames } from '../../src/playerNames.js'
+import { PBNPlay } from '../../src/pbn/pbnPlay.js'
+import { Card } from '../../src/card.js'
 
 describe('PBNGame', () => {
   it('defaults to no sections', () => {
@@ -566,6 +568,148 @@ describe('PBNGame', () => {
       game.setPlayerNames(PlayerNames.make())
       expect(game.getPlayerNames()).toEqual({})
       expect(game.sections).toHaveLength(0)
+    })
+  })
+
+  describe('getDeclaredContract / setDeclaredContract', () => {
+    const fourHeartsSouth = DeclaredContract.make(Contract.fromPBN('4H')!, 'S')
+
+    it('combines the Contract and Declarer tags', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "S"]']), new PBNSection(['[Contract "4HX"]'])])
+      expect(game.getDeclaredContract()).toEqual(DeclaredContract.make(Contract.fromPBN('4HX')!, 'S'))
+    })
+
+    it('needs no Result tag', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "S"]']), new PBNSection(['[Contract "4H"]'])])
+      expect(game.getResult()).toBeUndefined()
+      expect(game.getDeclaredContract()).toEqual(fourHeartsSouth)
+    })
+
+    it('is undefined when the Contract is missing, "Pass", or invalid', () => {
+      expect(new PBNGame([new PBNSection(['[Declarer "S"]'])]).getDeclaredContract()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Declarer "S"]']), new PBNSection(['[Contract "Pass"]'])]).getDeclaredContract()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Declarer "S"]']), new PBNSection(['[Contract "9Z"]'])]).getDeclaredContract()).toBeUndefined()
+    })
+
+    it('is undefined when the Declarer is missing or invalid', () => {
+      expect(new PBNGame([new PBNSection(['[Contract "4H"]'])]).getDeclaredContract()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Declarer "Q"]']), new PBNSection(['[Contract "4H"]'])]).getDeclaredContract()).toBeUndefined()
+    })
+
+    it('setDeclaredContract writes both tags', () => {
+      const game = new PBNGame()
+      game.setDeclaredContract(fourHeartsSouth)
+      expect(game.getTagValue('Contract')).toBe('4H')
+      expect(game.getTagValue('Declarer')).toBe('S')
+      expect(game.getDeclaredContract()).toEqual(fourHeartsSouth)
+    })
+
+    it('setDeclaredContract replaces existing tags and leaves others (Result) alone', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Declarer "N"]']),
+        new PBNSection(['[Contract "1NT"]']),
+        new PBNSection(['[Result "7"]']),
+      ])
+      game.setDeclaredContract(fourHeartsSouth)
+      expect(game.sections).toHaveLength(3)
+      expect(game.getDeclaredContract()).toEqual(fourHeartsSouth)
+      expect(game.getResult()).toBe(7)
+    })
+  })
+
+  describe('getPlay / setPlay', () => {
+    const gameWithPlay = (...tags: string[]): PBNGame =>
+      new PBNGame([
+        ...tags.map(tag => new PBNSection([tag])),
+        new PBNSection(['[Play "W"]', 'SK H3 S4 S3', 'C5 +']),
+      ])
+
+    it('decodes the Play section against the game\'s own Declarer and Contract', () => {
+      // 4H by South: hearts are trump, so North's H3 (a ruff) wins the first trick, not West's SK.
+      const play = gameWithPlay('[Declarer "S"]', '[Contract "4H"]').getPlay()!
+      expect(play.cards).toHaveLength(5)
+      expect(PBNPlay.tricks(play)[0]!.winner).toBe('N')
+      expect(play.cards[4]).toMatchObject({ position: 'N', card: 'C5' })
+    })
+
+    it('needs no Result tag — a partial play has none', () => {
+      expect(gameWithPlay('[Declarer "S"]', '[Contract "4H"]').getResult()).toBeUndefined()
+      expect(gameWithPlay('[Declarer "S"]', '[Contract "4H"]').getPlay()).toBeDefined()
+    })
+
+    it('is undefined without a Play section', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "S"]']), new PBNSection(['[Contract "4H"]'])])
+      expect(game.getPlay()).toBeUndefined()
+    })
+
+    it('is undefined without a Declarer or without a Contract', () => {
+      expect(gameWithPlay('[Contract "4H"]').getPlay()).toBeUndefined()
+      expect(gameWithPlay('[Declarer "S"]').getPlay()).toBeUndefined()
+    })
+
+    it('is undefined for a passed-out contract', () => {
+      expect(gameWithPlay('[Declarer "S"]', '[Contract "Pass"]').getPlay()).toBeUndefined()
+    })
+
+    it('is undefined when the Play tag is not the declarer\'s left-hand opponent', () => {
+      // Declarer West means North leads, so [Play "W"] is wrong for this contract.
+      expect(gameWithPlay('[Declarer "W"]', '[Contract "4H"]').getPlay()).toBeUndefined()
+    })
+
+    it('matches the tag name case-insensitively', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Declarer "S"]']),
+        new PBNSection(['[Contract "4H"]']),
+        new PBNSection(['[play "W"]', 'SK']),
+      ])
+      expect(game.getPlay()?.cards).toHaveLength(1)
+    })
+
+    it('setPlay writes the Play section, replacing any existing one', () => {
+      const game = gameWithPlay('[Declarer "S"]', '[Contract "4H"]')
+      let play = PBNPlay.make(DeclaredContract.make(Contract.fromPBN('4H')!, 'S'))
+      play = PBNPlay.makingCard(play, Card.fromPBN('DA'))
+      game.setPlay(play)
+      expect(game.getParsedSection('Play')?.bodyLines).toEqual(['DA +'])
+      expect(game.sections.filter(s => s.tagPair?.name === 'Play')).toHaveLength(1)
+    })
+
+    it('round-trips through setPlay/getPlay', () => {
+      const game = gameWithPlay('[Declarer "S"]', '[Contract "4H"]')
+      const play = game.getPlay()!
+      game.setPlay(play)
+      expect(game.getPlay()).toEqual(play)
+    })
+  })
+
+  describe('getOpeningLead', () => {
+    const gameWithPlay = (...playLines: string[]): PBNGame =>
+      new PBNGame([
+        new PBNSection(['[Declarer "S"]']),
+        new PBNSection(['[Contract "4H"]']),
+        new PBNSection(['[Play "W"]', ...playLines]),
+      ])
+
+    it('returns the position and card of the first card played', () => {
+      expect(gameWithPlay('SK H3 S4 S3').getOpeningLead()).toEqual({ position: 'W', card: 'SK' })
+    })
+
+    it('reports the lead of a play that has only just begun', () => {
+      expect(gameWithPlay('DA +').getOpeningLead()).toEqual({ position: 'W', card: 'DA' })
+    })
+
+    it('is undefined when no card has been played', () => {
+      expect(gameWithPlay().getOpeningLead()).toBeUndefined()
+      expect(gameWithPlay('+').getOpeningLead()).toBeUndefined()
+    })
+
+    it('is undefined when the opening lead is the unknown "-" card', () => {
+      expect(gameWithPlay('- H3 S4 S3', '*').getOpeningLead()).toBeUndefined()
+    })
+
+    it('is undefined without a Play section, or without a usable contract', () => {
+      expect(new PBNGame([new PBNSection(['[Declarer "S"]']), new PBNSection(['[Contract "4H"]'])]).getOpeningLead()).toBeUndefined()
+      expect(new PBNGame([new PBNSection(['[Play "W"]', 'SK'])]).getOpeningLead()).toBeUndefined()
     })
   })
 

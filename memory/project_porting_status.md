@@ -504,9 +504,8 @@ the natural next chunk (e.g. don't assume "now do the parser" just because it se
      resolving before or during that work rather than as an afterthought.
    - Small supporting value types: `Note`, `ContractTagValue`, `OptimumScoreTagValue` — probably
      needed by the accessors/parser above rather than standalone work.
-2. **`AnnotatedPlay` + Play section support** — the other complex tag alongside Auction; needs its
-   own `PBNSectionCodable` conformance, and will reuse NAG handling (NAG values 7-14 are
-   card-specific per the spec) once built.
+2. ~~**`AnnotatedPlay` + Play section support**~~ — **done (2026-09) as `PBNPlay`**, see the
+   dedicated section at the end. Not `PBNSectionCodable` after all (needs the contract as context).
 3. **`PBNAuction` remaining PBN-2.1 gaps — paused, low priority** (see note above): `*` (explicit
    auction termination, vs. the 3-pass convention), `-` ("not yet player's turn" placeholder),
    `^I`/`^S` (irregularity markers for insufficient bids / out-of-rotation calls). Auction already
@@ -1413,3 +1412,48 @@ Board tag at all, `Board 12`) produced exactly `["Board 5", "Board 5 (2)", "Boar
 selecting "Board A" correctly loaded that specific game (confirmed via its distinct Dealer value),
 proving the index-based selection under a letter label works exactly like a numeric one. 404 tests
 unaffected (no core changes), full workspace typecheck/build clean.
+
+## `PBNPlay` — the Play section (2026-09)
+New `src/pbn/pbnPlay.ts` (+ `tests/pbn/pbnPlay.test.ts`, 54 tests; 9 more in `pbnGame.test.ts`;
+467 total). **TS-only — Swift never implemented Play** (per Ralph),
+so the spec (`~/Downloads/pbn_v21.txt`, sections 3.6-3.7) was the sole authority, not the Swift repo.
+Same shape as `PBNAuction`: immutable value + a same-named namespace object, not a class.
+- **Takes a `DeclaredContract`, not a `Contract`** — a `Contract` has no declarer. Declarer gives the
+  opening leader (`Direction.next(declarer)`); strain gives trump. Both are needed to know who plays
+  each card: the winner of each trick leads the next, so **card positions are computed, never
+  supplied** (`PBNPlayCard.position`).
+- **Only the declarer's LHO is a valid `[Play "X"]` value** (Ralph's rule; the spec's export format
+  says the same, its import format allows others). `fromPBNSection` returns undefined otherwise.
+- **`fromPBNSection(lines, declaredContract)` needs a second argument, so it deliberately does NOT
+  conform to `PBNSectionCodable`.** `PBNGame.getPlay()` supplies it via the new
+  `PBNGame.getDeclaredContract()` (Contract + Declarer tags, undefined if either is missing/invalid/
+  "Pass"; paired with `setDeclaredContract`, which writes both tags) — NOT via `getDealOutcome()`,
+  which also requires a Result a partial play won't have. `getDealOutcome`/`setDealOutcome`'s
+  played branches were then switched to use the same helpers (behavior unchanged; `getDealOutcome`
+  still reads the raw Contract tag itself for the "Pass" check). `PBNGame.setPlay()` writes only the Play section (does not touch
+  Declarer/Contract). `getPlay` is undefined for "Pass", missing tags, or a wrong Play tag value.
+- **"Legitimate play" without the deal** (the Deal isn't consulted) = play not already over, no card
+  played twice, and no player plays a suit they already showed out of (`shownVoids`: a player who
+  didn't follow to a led suit is void in it, forever). Errors: `PBNPlayError` kinds
+  `playAlreadyComplete | duplicateCard | revoke | invalidNag`. Cannot check a card against its hand.
+- **NAGs**: suffixes `! ? !! ?? !? ?!` map to **7-12** for cards (auction's are 1-6). The spec says
+  $1-$6 and $13 are for calls only, so `makingCard` rejects them for cards (plus >255).
+  **`PBNAuction` does NOT enforce the mirror-image rule** (rejecting $7-$12/$14 on calls) — a gap
+  there, not a decision; left alone. Notes/NAGs/`=N=` otherwise handled exactly like the auction
+  (fresh note numbering on export; NAGs ascending after the note ref; comments dropped on parse).
+- **Tokenizer is a regex, not whitespace-split**, so "SK!!" parses as SK + "!!" per the spec's
+  self-terminating tokens. (`PBNAuction` still splits on whitespace — not changed.)
+- **`-`** = unknown card (`card: undefined`). Trailing bare dashes (and dashes after `+`) mean "not
+  played yet" and are dropped. A finished trick containing a `-` has no winner, so nothing can
+  follow it → `isComplete` is true (`endsInUnresolvedTrick`). This is what lets the spec's own
+  example (`- - - H2` then `*`) load. **`+`** (recommended-not-required) is emitted for an unfinished
+  unterminated play and accepted only as the last real token; **`*`** = `terminated`, own line.
+  Irregularity tokens (`^I ^S ^R ^L`) are rejected — "only legitimate play".
+- **`PBNGame.getOpeningLead()`** — getter only (no setter): `{ position, card } | undefined` from
+  the first card of `getPlay()`. Undefined if no usable Play, no cards yet, or the lead is `-`.
+- Also: `tricks(play)` (leader/cards/winner per trick), `nextToAct`, `isComplete`, `undoingLast`
+  (clears `*` too), `terminating` (no-op at 52 cards), `rotated`.
+- Verified against the spec's 5HX example: hand-traced every trick winner
+  (`N W N E S E, then unresolved`) and the round-trip re-encodes it exactly.
+- **Not built:** UI for Play (no `contractbridge-react` component, no viewer change); validating
+  cards against a Deal; a `setAuction` counterpart to `setPlay` (none exists for Auction either).

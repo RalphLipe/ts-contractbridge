@@ -8,8 +8,10 @@ import { Contract } from '../contract.js'
 import { DeclaredContract } from '../declaredContract.js'
 import { DealOutcome } from '../dealOutcome.js'
 import { PBNAuction } from './pbnAuction.js'
+import { PBNPlay } from './pbnPlay.js'
 import { parseSectionLines } from './parsedSection.js'
 import type { ParsedSection } from './parsedSection.js'
+import type { Card } from '../card.js'
 import { DoubleDummyTricks } from '../doubleDummyTricks.js'
 import type { PlayerNames } from '../playerNames.js'
 
@@ -143,6 +145,23 @@ export class PBNGame {
     this.setTag({ name: 'Contract', value: Contract.toPBN(contract) })
   }
 
+  // Declarer and Contract together, or undefined if either is missing or unparseable (including a
+  // Contract of "Pass", which getContract() already collapses to undefined). Unlike
+  // getDealOutcome() this doesn't need a Result.
+  getDeclaredContract(): DeclaredContract | undefined {
+    const contract = this.getContract()
+    const declarer = this.getDeclarer()
+    return contract === undefined || declarer === undefined
+      ? undefined
+      : DeclaredContract.make(contract, declarer)
+  }
+
+  // Writes both the Contract and Declarer tags. Doesn't touch Result or any other tag.
+  setDeclaredContract(declaredContract: DeclaredContract): void {
+    this.setContract(declaredContract.contract)
+    this.setDeclarer(declaredContract.declarer)
+  }
+
   // The Result tag's PBN value is a non-negative integer (like Board) further constrained to
   // 0-13 tricks taken; out-of-range or malformed values are treated as absent rather than thrown.
   getResult(): number | undefined {
@@ -167,11 +186,10 @@ export class PBNGame {
     if (contractValue !== undefined && contractValue.toUpperCase() === 'PASS') {
       return DealOutcome.passedOut
     }
-    const contract = this.getContract()
-    const declarer = this.getDeclarer()
+    const declaredContract = this.getDeclaredContract()
     const result = this.getResult()
-    if (contract === undefined || declarer === undefined || result === undefined) return undefined
-    return DealOutcome.played(DeclaredContract.make(contract, declarer), result)
+    if (declaredContract === undefined || result === undefined) return undefined
+    return DealOutcome.played(declaredContract, result)
   }
 
   // Only passedOut and played can be represented via Declarer/Contract/Result — anything else
@@ -187,8 +205,7 @@ export class PBNGame {
         this.deleteSection('Result')
         return
       case 'played':
-        this.setContract(outcome.declaredContract.contract)
-        this.setDeclarer(outcome.declaredContract.declarer)
+        this.setDeclaredContract(outcome.declaredContract)
         this.setResult(outcome.tricksTaken)
         return
       default:
@@ -200,6 +217,36 @@ export class PBNGame {
     const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === 'auction')
     if (section === undefined) return undefined
     return PBNAuction.fromPBNSection(section.lines)
+  }
+
+  // The Play section, decoded against this game's own Declarer and Contract tags (the spec
+  // requires both to precede a Play section) — they supply the opening leader and the trump suit
+  // that legitimate play is checked against. Reads the raw tags rather than getDealOutcome():
+  // that one also demands a Result, which a Play section (especially a partial one) needn't have —
+  // getDeclaredContract() is the right helper.
+  // Undefined if there's no Play section, no usable Declarer/Contract (including a passed-out
+  // "Pass"), or the section isn't legitimate play for that contract.
+  getPlay(): PBNPlay | undefined {
+    const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === 'play')
+    const declaredContract = this.getDeclaredContract()
+    if (section === undefined || declaredContract === undefined) return undefined
+    return PBNPlay.fromPBNSection(section.lines, declaredContract)
+  }
+
+  // Getter only: who led, and what they led, read off the first card of getPlay(). Undefined if
+  // there's no usable Play section, no card has been played yet, or the opening lead is the
+  // unknown "-" card (there's no card to report). The position is always the declarer's
+  // left-hand opponent, since that's the only opening leader PBNPlay accepts.
+  getOpeningLead(): { readonly position: Direction; readonly card: Card } | undefined {
+    const first = this.getPlay()?.cards[0]
+    return first?.card === undefined ? undefined : { position: first.position, card: first.card }
+  }
+
+  // Writes only the Play section. It doesn't touch Declarer/Contract, so the play's own
+  // declaredContract is the caller's to keep consistent with them — getPlay decodes against the
+  // game's tags, not the play's.
+  setPlay(play: PBNPlay): void {
+    this.setSection(PBNPlay.toPBNSection(play))
   }
 
   // Thin wrapper over DoubleDummyTricks's existing PBNCodable conformance. The wire tag is
