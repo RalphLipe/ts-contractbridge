@@ -3,7 +3,7 @@ import { PBNFormattedText } from './PBNFormattedText.js'
 
 export type DealResultViewProps = {
   // The Result tag's section comments (PBNGame.getParsedSection('Result')?.comments ?? []).
-  // Nothing renders at all if this is empty — there's no result-related content to show.
+  // May be empty — the tricks/score line below can still show on its own.
   readonly comments: readonly string[]
   // Present only when the app found a valid DealOutcome of kind 'played' (and could compute a
   // score for it) — shown above the comments. Omitted for any other outcome (passedOut, no
@@ -14,11 +14,12 @@ export type DealResultViewProps = {
   }
 }
 
-// The Result tag's own free-text comments, shown after the auction — optionally preceded by the
-// tricks taken and score, when there's a valid played result to report. Just a display; the app
-// decides what counts as "valid" and computes the score (see apps/pbn-viewer/src/App.tsx).
+// The tricks taken and score (when there's a valid played result to report), then the Result tag's
+// own free-text comments. Either part can appear without the other, and nothing renders at all if
+// there's neither. Just a display; the app decides what counts as "valid" and computes the score
+// (see apps/pbn-viewer/src/App.tsx).
 export function DealResultView({ comments, playedResult }: DealResultViewProps): JSX.Element | null {
-  if (comments.length === 0) return null
+  if (comments.length === 0 && playedResult === undefined) return null
   return (
     <div>
       {playedResult !== undefined && (

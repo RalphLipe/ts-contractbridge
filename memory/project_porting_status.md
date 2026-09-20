@@ -1478,3 +1478,23 @@ Same shape as `PBNAuction`: immutable value + a same-named namespace object, not
   is what the hand diagram's monospace already resolved to, so its look is unchanged.
 - Verified in the browser tool with the spec's Play example (lead + note, incl. a `\S` in the note)
   and a note-less game; heart fix checked with an auction + auction note + lead note. Not deployed.
+
+## PBN Viewer shows the contract and declarer (2026-09)
+Ralph: many real PBN files have a Contract + Declarer but no Result, and the viewer showed nothing
+for them. Looking at it turned up that the viewer never showed the contract at all, and that even a
+valid played Result showed nothing unless the Result tag had comments (`DealResultView` returned
+null when `comments` was empty). Fixed both:
+- New `contractbridge-react` `DeclaredContractView` — "Contract: 5♥X by South" (strain via
+  `StrainSymbol`, risk after it, declarer's full name). Shown whenever `PBNGame.getDeclaredContract()`
+  is defined, with or without a Result, and alongside the played result rather than instead of it.
+  Mirrors the Swift reference's contract line in `PBNGameView.swift`. Placed after the auction (or
+  in place of it, when there is none), before the opening lead.
+- `DealResultView` now renders when there is a `playedResult` OR comments (was: comments only), so
+  "10 tricks, +430" shows on its own. Still null when there's neither.
+- Layout order in `App.tsx`: deal, DD tricks, auction, **contract**, opening lead, result/comments.
+- Verified in the browser tool: contract only; contract + result (no comments — the old blank case);
+  + comment; contract + Play lead; no contract at all (nothing extra); 5HX -300 and 3NT+1 +430
+  scores correct.
+- **Not done, deliberately (out of scope):** Swift also shows "Passed out" for `Contract "Pass"`;
+  `getDeclaredContract()` is undefined for that, so the viewer shows nothing extra. Also unchanged:
+  comments outside the Result section (e.g. a global `{...}` block) are still not displayed.

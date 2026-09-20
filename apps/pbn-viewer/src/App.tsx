@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
 import { Contract, Direction, PBNDocument, Vulnerable } from 'ts-contractbridge'
 import type { PBNGame } from 'ts-contractbridge'
-import { AuctionTable, DealDiagram, DealResultView, DoubleDummyTricksView, OpeningLeadView } from 'contractbridge-react'
+import { AuctionTable, DealDiagram, DealResultView, DeclaredContractView, DoubleDummyTricksView, OpeningLeadView } from 'contractbridge-react'
 
 // Spreadsheet-column-style letters (A, B, ... Z, AA, AB, ...) for a game with no real Board tag —
 // deliberately NOT a number, so it can never be mistaken for an actual board number.
@@ -63,6 +63,7 @@ export function App(): JSX.Element {
   const selectedDoubleDummyTricks = selectedGame?.getDoubleDummyTricks()
   const selectedPlayerNames = selectedGame?.getPlayerNames()
   const openingLead = selectedGame?.getOpeningLead()
+  const declaredContract = selectedGame?.getDeclaredContract()
 
   const selectedDealer = selectedGame?.getDealer()
 
@@ -123,6 +124,8 @@ export function App(): JSX.Element {
             <DoubleDummyTricksView tricks={selectedDoubleDummyTricks} />}
 
           {selectedAuction !== undefined && <AuctionTable auction={selectedAuction} />}
+
+          {declaredContract !== undefined && <DeclaredContractView declaredContract={declaredContract} />}
 
           {openingLead !== undefined && <OpeningLeadView {...openingLead} />}
 
