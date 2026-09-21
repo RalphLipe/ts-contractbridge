@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
-import { Contract, Direction, PBNDocument, Vulnerable } from 'ts-contractbridge'
+import { Contract, Direction, PBNDocument, Vulnerable, decodePBNBytes } from 'ts-contractbridge'
 import type { PBNGame } from 'ts-contractbridge'
 import { AuctionTable, DealDiagram, DealResultView, DeclaredContractView, DoubleDummyTricksView, OpeningLeadView } from 'contractbridge-react'
 
@@ -45,8 +45,10 @@ export function App(): JSX.Element {
     const file = e.target.files?.[0]
     if (file === undefined) return
     try {
-      const text = await file.text()
-      const parsed = PBNDocument.fromPBN(text)
+      // Read raw bytes rather than file.text(), which assumes UTF-8: real PBN files are often Latin-1
+      // (BridgeComposer declares charset=ISO-8859-1), and reading one as UTF-8 turns every accented
+      // character into a permanent U+FFFD.
+      const parsed = PBNDocument.fromPBN(decodePBNBytes(new Uint8Array(await file.arrayBuffer())))
       setDoc(parsed)
       setSelectedIndex(0)
       setError(parsed.games.length === 0 ? 'No games found in this file.' : undefined)

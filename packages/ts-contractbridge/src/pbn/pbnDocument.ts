@@ -25,8 +25,9 @@ export class PBNDocument {
   // a Unix-style file. Layout matches the real files this was checked against: the escaped header
   // lines first, then the games with exactly one empty line between one game and the next (none
   // before the first game or after the last). A game with no lines at all writes nothing, so it
-  // can't produce a double blank line. Returns a string — encoding it to bytes (and writing it
-  // anywhere) is the caller's business. Round-trips with fromPBN, except that fromPBN treats any
+  // can't produce a double blank line. Returns a string; to turn it into file bytes (and back
+  // again when reading) see encodePBNBytes / decodePBNBytes in pbnBytes.ts — or encode it however
+  // you like. Writing the file anywhere is the caller's business. Round-trips with fromPBN, except that fromPBN treats any
   // "%" line outside a game as header text wherever it appeared, so such lines come out at the top.
   toPBN(lineBreak: string = '\r\n'): string {
     const lines: string[] = [...this.escapedText]

@@ -1549,10 +1549,10 @@ file I/O, no encoding to bytes; the app layer encodes and writes it. Named `toPB
   pass `'\n'` for a Unix-style file. Layout: escaped header lines, then games with exactly ONE empty
   line between games (none before the first / after the last) — what BridgeComposer's files do. A game
   with zero lines is skipped (else a double blank line). Empty document → `''`.
-- **Ralph's decision (2026-09): ignore the spec's character-set rule.** An earlier version of this
-  step also had `toPBNBytes()` (ISO 8859-1, `?` for unrepresentable chars) and static
-  `fromPBNBytes()` (UTF-8 if valid, else Latin 1). Ralph had them REMOVED — only `toPBN` exists. Do not
-  re-add byte/encoding methods to the core without being asked.
+- **`PBNDocument` stays string-only (Ralph, 2026-09).** An earlier version had `toPBNBytes()` /
+  static `fromPBNBytes()` ON the document; Ralph had them removed. Byte handling was later added back
+  as STANDALONE functions instead — see "Byte helpers" below. Do not put byte/encoding methods back on
+  `PBNDocument`.
 - **Known quirk (pre-existing, not fixed):** `fromPBN` sends any `%` line that appears while no
   section is open to `escapedText` wherever it is in the file, so `toPBN` writes such lines at the
   top, not where they were. BridgeComposer files only have them in the header, so unaffected.
@@ -1611,3 +1611,27 @@ undefined. (Follows his "mandatory tags are never deleted" rule; see the `setAuc
   contains an empty string (a hand-written literal like `{ N: "" }` still can; `DealDiagram` already
   ignores `""`, and `setPlayerNames` writes it as `""` anyway). Type comment updated.
 - Tests: 542 total (6 new in `pbnGame.test.ts`, 2 in `playerNames.test.ts`, 2 replaced). Not committed.
+
+## Byte helpers: `decodePBNBytes` / `encodePBNBytes` (2026-09)
+`src/pbn/pbnBytes.ts`, exported from the package index. Ralph asked whether the client should do
+Latin-1 handling or the core should; conclusion: standalone functions in the core, NOT methods on
+`PBNDocument` (which stays string-only). Documentation (file header + JSDoc with browser and Node
+examples) explains why they exist, the usage pattern, and the lossy case.
+- **`decodePBNBytes(bytes: Uint8Array): string`** — strict UTF-8 if valid (BOM dropped), else Latin 1
+  decoded byte-for-byte. NOT `TextDecoder('latin1')`, which is windows-1252 and wouldn't round-trip
+  0x80-0x9F. Use: `PBNDocument.fromPBN(decodePBNBytes(bytes))`.
+- **`encodePBNBytes(text: string): Uint8Array`** — ISO 8859-1, one byte per char per spec 2.2;
+  anything above U+00FF becomes a single `?` (per code point, so an emoji is one `?`). **Lossy** — the
+  doc comment says so and names the alternative (encode UTF-8 yourself, at the cost of a header
+  mismatch for files declaring `charset=ISO-8859-1`). Use: `encodePBNBytes(doc.toPBN())`.
+- **Why they exist:** a Latin-1 file read as UTF-8 gets U+FFFD for every accent, permanently once
+  saved. A Latin-1 file decoded and re-encoded is byte-identical (tested on all 256 byte values and on
+  `hand-record-1/2.pbn` and `TOB L5 Hands.pbn`).
+- **Viewer now uses `decodePBNBytes`** (`apps/pbn-viewer/src/App.tsx`, 2026-09):
+  `PBNDocument.fromPBN(decodePBNBytes(new Uint8Array(await file.arrayBuffer())))` replaced
+  `file.text()`, which assumed UTF-8 and turned Latin-1 accents into U+FFFD. Verified in the browser
+  tool with real raw bytes (`é`=0xE9, `ñ`=0xF1, `ë`=0xEB — invalid UTF-8): names "José Muñoz" and "Zoë"
+  display correctly, the same text as a UTF-8 file also loads correctly, and `new TextDecoder()` (the
+  old behavior) does produce U+FFFD for those bytes. The viewer only reads; nothing there writes, so
+  `encodePBNBytes` has no app caller yet. NOT redeployed to bigdealbridge.com.
+- Tests: `tests/pbn/pbnBytes.test.ts`, 21 new (563 total). Not committed.
