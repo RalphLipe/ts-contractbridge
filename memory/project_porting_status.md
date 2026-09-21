@@ -1566,3 +1566,48 @@ file I/O, no encoding to bytes; the app layer encodes and writes it. Named `toPB
   skipped empty games, blank line inside a `{}` comment, round trip of all 5 fixtures,
   **byte-for-byte reproduction of `hand-record-1/2.pbn`** (CRLF default) and of `TOB L5 Hands.pbn`
   (with `toPBN('\n')`), and converted-then-saved header.
+
+## `PBNGame.setAuction` keeps Dealer, Contract and Declarer in step (2026-09)
+`PBNGame` had `getAuction` but no setter. Added `setAuction(auction: PBNAuction)`, which replaces the
+Auction section and, **as a documented side effect**, keeps other tags consistent with it:
+- **Dealer check (Ralph):** the auction's dealer must equal the game's Dealer tag or it **throws**
+  (plain `Error`, like `setDealOutcome`'s; message names both seats) BEFORE changing anything. If the
+  game has no usable Dealer (`getDealer()` undefined — absent, `""`, `"?"`, or unrecognizable) the
+  auction's dealer is written to it. That last part was my extension (the spec wants Dealer filled
+  when an Auction exists); a garbage non-empty Dealer like `"Q"` is overwritten too.
+- **completed auction with a contract** → `setDeclaredContract(PBNAuction.declaredContract(...))`
+  (declarer = first player on the declaring side to bid the strain; risk included, e.g. `1HX`).
+- **passed out** → `[Contract "Pass"]`, `[Declarer ""]` (also the spec's value for all-pass).
+- **unfinished auction (incl. empty)** → Contract `""` and Declarer `""`.
+- **Rule (Ralph): mandatory tags are never deleted, only emptied to `""`**, so an export-format game
+  stays in proper form. This replaced the first version, which DELETED Contract/Declarer for an
+  unfinished auction. Applied consistently: **`setDealOutcome(passedOut)` now also sets
+  `Declarer ""` and `Result ""`** (it used to delete both) — closing the inconsistency noted earlier.
+  Parsed behavior is unchanged (`getDeclarer`/`getResult` are undefined for `""`, as for absent).
+- `setPlayerNames` was the last place that deleted mandatory tags; fixed right after — see "Empty
+  player name" section below.
+- **Touches no other tag** — Result and Play describe the OLD contract and go stale if it changes;
+  `setAuction` deliberately does not clear them (not asked).
+- Tests (15 new for setAuction; 536 total) in `pbnGame.test.ts`: section written/replaced, contract +
+  declarer, first-to-bid declarer (1H P 2H → North), doubled, passed out (also `getDealOutcome` →
+  passedOut), replacing a previous contract, unfinished/empty → `""` with one tag each, dealer mismatch
+  throws leaving every line untouched, dealer match, dealer filled when absent/`""`/`"?"`/`"Q"`, other
+  tags untouched; `setDealOutcome(passedOut)` test now expects `""`, tag order unchanged.
+  Not committed.
+
+## Empty player name == no name; name tags are never deleted (2026-09)
+Ralph: treat a player name of `""` the same as undefined; keep the tags but set them to `""` when
+undefined. (Follows his "mandatory tags are never deleted" rule; see the `setAuction` section.)
+- **`PBNGame.getPlayerNames()`** — a tag whose value is `""` produces NO entry in the dictionary
+  (same as a missing tag). Real files carry `[West ""]` for "no name".
+- **`PBNGame.setPlayerNames(names)`** — always writes all four tags: `names[d] ?? ""`. So a
+  direction with no name (missing or `""`) gets `[X ""]`, never a deleted tag. Consequence: calling
+  it on a bare game with `{}` adds four empty tags (accepted). The round trip is now
+  `setPlayerNames(x)` → `getPlayerNames()` equals `x` minus any empty names — `{}` still round-trips
+  to `{}`, just via four `""` tags instead of zero. Replaces the old "deletes tags for missing
+  directions" behavior and its "clears all four tags → 0 sections" test.
+- **`PlayerNames` value type** enforces the same rule by itself: `withName(names, d, "")` REMOVES the
+  entry and `rotated` drops `""` entries, so a `PlayerNames` built through its own functions never
+  contains an empty string (a hand-written literal like `{ N: "" }` still can; `DealDiagram` already
+  ignores `""`, and `setPlayerNames` writes it as `""` anyway). Type comment updated.
+- Tests: 542 total (6 new in `pbnGame.test.ts`, 2 in `playerNames.test.ts`, 2 replaced). Not committed.

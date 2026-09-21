@@ -8,6 +8,9 @@ import { DealOutcome } from '../../src/dealOutcome.js'
 import { DoubleDummyTricks } from '../../src/doubleDummyTricks.js'
 import { PlayerNames } from '../../src/playerNames.js'
 import { PBNPlay } from '../../src/pbn/pbnPlay.js'
+import { PBNAuction } from '../../src/pbn/pbnAuction.js'
+import type { Call } from '../../src/call.js'
+import type { Direction } from '../../src/direction.js'
 import { Card } from '../../src/card.js'
 
 describe('PBNGame', () => {
@@ -459,7 +462,7 @@ describe('PBNGame', () => {
       ]).getDealOutcome()).toBeUndefined()
     })
 
-    it('setDealOutcome(passedOut) sets Contract to "Pass" and clears Declarer/Result', () => {
+    it('setDealOutcome(passedOut) sets Contract to "Pass" and empties Declarer and Result, never deleting them', () => {
       const game = new PBNGame([
         new PBNSection(['[Declarer "N"]']),
         new PBNSection(['[Contract "3NT"]']),
@@ -467,8 +470,9 @@ describe('PBNGame', () => {
       ])
       game.setDealOutcome(DealOutcome.passedOut)
       expect(game.getTagValue('Contract')).toBe('Pass')
-      expect(game.getTagValue('Declarer')).toBeUndefined()
-      expect(game.getTagValue('Result')).toBeUndefined()
+      expect(game.getTagValue('Declarer')).toBe('')
+      expect(game.getTagValue('Result')).toBe('')
+      expect(game.sections.map(s => s.tagPair?.name)).toEqual(['Declarer', 'Contract', 'Result'])
       expect(game.getDealOutcome()).toEqual(DealOutcome.passedOut)
     })
 
@@ -552,22 +556,61 @@ describe('PBNGame', () => {
       expect(game.getTagValue('West')).toBe('Dave')
     })
 
-    it('setPlayerNames deletes tags for directions missing from the new value', () => {
+    it('treats an empty tag value as no name, like a missing tag', () => {
+      const game = new PBNGame([
+        new PBNSection(['[West ""]']),
+        new PBNSection(['[North "Alice"]']),
+        new PBNSection(['[East ""]']),
+      ])
+      const names = game.getPlayerNames()
+      expect(names).toEqual({ N: 'Alice' })
+      expect('W' in names).toBe(false)
+      expect('E' in names).toBe(false)
+    })
+
+    it('reads a real export-format game whose four name tags are all empty as no names', () => {
+      const game = new PBNGame([
+        new PBNSection(['[West ""]']), new PBNSection(['[North ""]']),
+        new PBNSection(['[East ""]']), new PBNSection(['[South ""]']),
+      ])
+      expect(game.getPlayerNames()).toEqual({})
+    })
+
+    it('setPlayerNames sets the tag to "" for directions missing from the new value, never deleting it', () => {
       const game = new PBNGame([
         new PBNSection(['[North "Alice"]']),
         new PBNSection(['[South "Bob"]']),
       ])
       game.setPlayerNames({ N: 'Eve' })
       expect(game.getPlayerNames()).toEqual({ N: 'Eve' })
-      expect(game.getTagValue('South')).toBeUndefined()
+      expect(game.getTagValue('North')).toBe('Eve')
+      expect(game.getTagValue('South')).toBe('')
+      expect(game.sections.filter(s => s.tagPair?.name === 'South')).toHaveLength(1)
     })
 
-    it('setPlayerNames with an empty value clears all four tags', () => {
+    it('setPlayerNames writes all four tags, "" for the unnamed ones, even on a bare game', () => {
+      const game = new PBNGame()
+      game.setPlayerNames({ E: 'Bob' })
+      expect(game.sections.map(s => s.lines[0])).toEqual([
+        '[North ""]', '[East "Bob"]', '[South ""]', '[West ""]',
+      ])
+      expect(game.getPlayerNames()).toEqual({ E: 'Bob' })
+    })
+
+    it('setPlayerNames with an empty value empties all four tags but keeps them', () => {
       const game = new PBNGame()
       game.setPlayerNames({ N: 'Alice', E: 'Bob', S: 'Carol', W: 'Dave' })
       game.setPlayerNames(PlayerNames.make())
       expect(game.getPlayerNames()).toEqual({})
-      expect(game.sections).toHaveLength(0)
+      expect(game.sections).toHaveLength(4)
+      expect(game.sections.every(s => s.tagPair?.value === '')).toBe(true)
+    })
+
+    it('an empty-string name in the PlayerNames given to setPlayerNames is the same as no name', () => {
+      const game = new PBNGame()
+      game.setPlayerNames({ N: 'Alice', S: '' })
+      expect(game.getPlayerNames()).toEqual({ N: 'Alice' })
+      expect(game.getTagValue('South')).toBe('')
     })
   })
 
@@ -614,6 +657,132 @@ describe('PBNGame', () => {
       expect(game.sections).toHaveLength(3)
       expect(game.getDeclaredContract()).toEqual(fourHeartsSouth)
       expect(game.getResult()).toBe(7)
+    })
+  })
+
+  describe('getAuction / setAuction', () => {
+    const auctionOf = (dealer: Direction, ...calls: Call[]): PBNAuction =>
+      calls.reduce((a, call) => PBNAuction.makingCall(a, call), PBNAuction.make(dealer))
+
+    it('writes the Auction section, readable back with getAuction', () => {
+      const game = new PBNGame()
+      const auction = auctionOf('N', '1NT', 'Pass', 'Pass', 'Pass')
+      game.setAuction(auction)
+      expect(game.getAuction()).toEqual(auction)
+      expect(game.getParsedSection('Auction')?.bodyLines).toEqual(['1NT Pass Pass Pass'])
+    })
+
+    it('replaces an existing Auction section rather than adding a second', () => {
+      const game = new PBNGame([new PBNSection(['[Auction "N"]', 'Pass Pass Pass Pass'])])
+      game.setAuction(auctionOf('N', '1C', 'Pass', 'Pass', 'Pass'))
+      expect(game.sections.filter(s => s.tagPair?.name === 'Auction')).toHaveLength(1)
+      expect(game.getAuction()!.calls[0]!.call).toBe('1C')
+    })
+
+    it('sets Contract and Declarer from a completed auction', () => {
+      const game = new PBNGame()
+      game.setAuction(auctionOf('N', '1NT', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Contract')).toBe('1NT')
+      expect(game.getTagValue('Declarer')).toBe('N')
+      expect(game.getDeclaredContract()).toEqual(DeclaredContract.make(Contract.fromPBN('1NT')!, 'N'))
+    })
+
+    it('makes the declarer the first player on the declaring side to bid the strain', () => {
+      // North opens 1H and South raises to 2H, so North is declarer of 2H even though South bid last.
+      const game = new PBNGame()
+      game.setAuction(auctionOf('N', '1H', 'Pass', '2H', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Contract')).toBe('2H')
+      expect(game.getTagValue('Declarer')).toBe('N')
+    })
+
+    it('records a doubled contract', () => {
+      const game = new PBNGame()
+      game.setAuction(auctionOf('N', '1H', 'X', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Contract')).toBe('1HX')
+      expect(game.getTagValue('Declarer')).toBe('N')
+    })
+
+    it('sets Contract "Pass" and an empty Declarer for a passed-out auction', () => {
+      const game = new PBNGame()
+      game.setAuction(auctionOf('E', 'Pass', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Contract')).toBe('Pass')
+      expect(game.getTagValue('Declarer')).toBe('')
+      expect(game.sections.find(s => s.tagPair?.name === 'Declarer')!.lines).toEqual(['[Declarer ""]'])
+      expect(game.getDeclaredContract()).toBeUndefined()
+      expect(game.getDealOutcome()).toEqual(DealOutcome.passedOut)
+    })
+
+    it('replaces a previous contract and declarer', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "W"]']), new PBNSection(['[Contract "4S"]'])])
+      game.setAuction(auctionOf('N', '1NT', 'Pass', 'Pass', 'Pass'))
+      expect(game.getDeclaredContract()).toEqual(DeclaredContract.make(Contract.fromPBN('1NT')!, 'N'))
+      expect(game.sections.filter(s => s.tagPair?.name === 'Contract')).toHaveLength(1)
+    })
+
+    it('turns a previous contract into "Pass" and an empty Declarer when the new auction is passed out', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "W"]']), new PBNSection(['[Contract "4S"]'])])
+      game.setAuction(auctionOf('N', 'Pass', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Contract')).toBe('Pass')
+      expect(game.getTagValue('Declarer')).toBe('')
+    })
+
+    it('empties Contract and Declarer, never deleting them, when the auction is not finished', () => {
+      const game = new PBNGame([new PBNSection(['[Declarer "W"]']), new PBNSection(['[Contract "4S"]'])])
+      game.setAuction(auctionOf('N', '1NT', 'Pass'))
+      expect(game.getTagValue('Contract')).toBe('')
+      expect(game.getTagValue('Declarer')).toBe('')
+      expect(game.getDeclaredContract()).toBeUndefined()
+      game.setAuction(PBNAuction.make('N'))
+      expect(game.getTagValue('Contract')).toBe('')
+      expect(game.getTagValue('Declarer')).toBe('')
+      expect(game.sections.filter(s => s.tagPair?.name === 'Contract')).toHaveLength(1)
+    })
+
+    it('throws, changing nothing, when the auction dealer does not match the Dealer tag', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Dealer "S"]']),
+        new PBNSection(['[Declarer "W"]']),
+        new PBNSection(['[Contract "4S"]']),
+        new PBNSection(['[Auction "S"]', 'Pass Pass Pass Pass']),
+      ])
+      const before = game.sections.flatMap(s => [...s.lines])
+      expect(() => game.setAuction(auctionOf('N', '1NT', 'Pass', 'Pass', 'Pass'))).toThrow(/does not match/)
+      expect(game.sections.flatMap(s => [...s.lines])).toEqual(before)
+    })
+
+    it('accepts an auction whose dealer matches the Dealer tag', () => {
+      const game = new PBNGame([new PBNSection(['[Dealer "E"]'])])
+      game.setAuction(auctionOf('E', '1NT', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Dealer')).toBe('E')
+      expect(game.getDeclaredContract()!.declarer).toBe('E')
+    })
+
+    it('writes the auction\'s dealer to Dealer when the game has none', () => {
+      const game = new PBNGame()
+      game.setAuction(auctionOf('W', 'Pass', 'Pass', 'Pass', 'Pass'))
+      expect(game.getDealer()).toBe('W')
+    })
+
+    it('writes the auction\'s dealer over a Dealer that is empty or unrecognizable', () => {
+      for (const value of ['', '?', 'Q']) {
+        const game = new PBNGame([new PBNSection([`[Dealer "${value}"]`])])
+        game.setAuction(auctionOf('S', 'Pass', 'Pass', 'Pass', 'Pass'))
+        expect(game.getTagValue('Dealer')).toBe('S')
+        expect(game.sections.filter(s => s.tagPair?.name === 'Dealer')).toHaveLength(1)
+      }
+    })
+
+    it('leaves every other tag alone, including Result and Play', () => {
+      const game = new PBNGame([
+        new PBNSection(['[Dealer "N"]']),
+        new PBNSection(['[Vulnerable "All"]']),
+        new PBNSection(['[Result "9"]']),
+        new PBNSection(['[Play "W"]', 'SK']),
+      ])
+      game.setAuction(auctionOf('N', '1NT', 'Pass', 'Pass', 'Pass'))
+      expect(game.getTagValue('Vulnerable')).toBe('All')
+      expect(game.getTagValue('Result')).toBe('9')
+      expect(game.getParsedSection('Play')?.bodyLines).toEqual(['SK'])
     })
   })
 

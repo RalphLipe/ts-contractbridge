@@ -20,7 +20,22 @@ describe('PlayerNames', () => {
     expect(names).toEqual({ N: 'Alice', S: 'Bob' })
   })
 
+  it('withName with an empty string removes the entry, since "" means no name', () => {
+    const names = PlayerNames.withName(PlayerNames.make(), 'N', 'Alice')
+    const cleared = PlayerNames.withName(names, 'N', '')
+    expect(cleared).toEqual({})
+    expect('N' in cleared).toBe(false)
+    expect(names.N).toBe('Alice')
+    expect(PlayerNames.withName(PlayerNames.make(), 'E', '')).toEqual({})
+  })
+
   describe('rotated', () => {
+    it('drops an empty-string name rather than carrying it to the new seat', () => {
+      const rotated = PlayerNames.rotated({ N: 'Alice', E: '' }, 1)
+      expect(rotated).toEqual({ E: 'Alice' })
+      expect('S' in rotated).toBe(false)
+    })
+
     it('moves each name to its rotated direction', () => {
       const names: PlayerNames = { N: 'Alice', E: 'Bob', S: 'Carol', W: 'Dave' }
       const rotated = PlayerNames.rotated(names, 1)

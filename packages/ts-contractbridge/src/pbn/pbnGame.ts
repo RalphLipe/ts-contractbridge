@@ -211,10 +211,13 @@ export class PBNGame {
   setDealOutcome(outcome: DealOutcome): void {
     switch (outcome.kind) {
       case 'passedOut':
+        // Declarer and Result are mandatory tags, so they are emptied rather than deleted — that keeps
+        // an export-format game in proper form, and the spec's value for both when all four players
+        // pass is the empty string. Left alone, a previous contract's Declarer/Result would linger
+        // alongside "Pass".
         this.setTag({ name: 'Contract', value: 'Pass' })
-        // Stale Declarer/Result from a previous contract would otherwise linger alongside "Pass".
-        this.deleteSection('Declarer')
-        this.deleteSection('Result')
+        this.setTag({ name: 'Declarer', value: '' })
+        this.setTag({ name: 'Result', value: '' })
         return
       case 'played':
         this.setDeclaredContract(outcome.declaredContract)
@@ -229,6 +232,45 @@ export class PBNGame {
     const section = this._sections.find(s => s.tagPair?.name.toLowerCase() === 'auction')
     if (section === undefined) return undefined
     return PBNAuction.fromPBNSection(section.lines)
+  }
+
+  // Replaces the Auction section with `auction`, AND — as a side effect — keeps the Dealer,
+  // Contract and Declarer tags in step with it, so they can never disagree:
+  //   - Dealer: the auction's dealer must match the Dealer tag, or this THROWS before changing
+  //     anything (an auction started by the wrong player belongs to a different deal position). If
+  //     the game has no usable Dealer yet, the auction's dealer is written to it.
+  //   - a completed auction with a contract: Contract and Declarer are set to it (the declarer is
+  //     whoever on the declaring side first bid that strain, per PBNAuction.declaredContract);
+  //   - a passed-out auction: Contract is "Pass" and Declarer is "" (the spec's value when all four
+  //     players pass);
+  //   - an auction that isn't finished yet: there is no contract, so Contract and Declarer are both
+  //     set to "".
+  // Contract and Declarer are mandatory tags, so they are never deleted — "" is how a mandatory tag
+  // says "no value", and it keeps an export-format game in proper form. No other tag is touched —
+  // in particular not Result or the Play section, which describe the play of the OLD contract and
+  // become stale if this one differs; clearing them is the caller's call.
+  setAuction(auction: PBNAuction): void {
+    const dealer = this.getDealer()
+    if (dealer !== undefined && dealer !== auction.dealer) {
+      throw new Error(
+        `Auction dealer ${Direction.name(auction.dealer)} does not match the game's Dealer, ${Direction.name(dealer)}`
+      )
+    }
+    if (dealer === undefined) this.setDealer(auction.dealer)
+
+    this.setSection(PBNAuction.toPBNSection(auction))
+    if (PBNAuction.isPassedOut(auction)) {
+      this.setTag({ name: 'Contract', value: 'Pass' })
+      this.setTag({ name: 'Declarer', value: '' })
+      return
+    }
+    const declaredContract = PBNAuction.isComplete(auction) ? PBNAuction.declaredContract(auction) : undefined
+    if (declaredContract === undefined) {
+      this.setTag({ name: 'Contract', value: '' })
+      this.setTag({ name: 'Declarer', value: '' })
+    } else {
+      this.setDeclaredContract(declaredContract)
+    }
   }
 
   // The Play section, decoded against this game's own Declarer and Contract tags (the spec
@@ -282,30 +324,28 @@ export class PBNGame {
     this.setTag({ name: 'DoubleDummyTricks', value: DoubleDummyTricks.toPBN(tricks) })
   }
 
-  // Reads the West/North/East/South simple tags into a single PlayerNames value. Unlike most
-  // accessors here, this never returns undefined — PlayerNames already represents "no names
-  // known" as {} (every direction absent), so there's no need for an extra undefined wrapper on
-  // top of that.
+  // Reads the West/North/East/South simple tags into a single PlayerNames value. An empty tag value
+  // means "no name", exactly like a missing tag, so it produces no entry at all for that direction
+  // (real files routinely carry [West ""] for that). Unlike most accessors here, this never
+  // returns undefined — PlayerNames already represents "no names known" as {} (every direction
+  // absent), so there's no need for an extra undefined wrapper on top of that.
   getPlayerNames(): PlayerNames {
     const names: Partial<Record<Direction, string>> = {}
     for (const direction of Direction.all) {
       const value = this.getTagValue(Direction.name(direction))
-      if (value !== undefined) names[direction] = value
+      if (value !== undefined && value !== '') names[direction] = value
     }
     return names
   }
 
-  // Wholesale replace, matching setDealOutcome's "no stale leftover data" discipline: a direction
-  // missing from `names` has its tag deleted rather than left behind from a previous call.
+  // Wholesale replace, matching setDealOutcome's "no stale leftover data" discipline. All four tags
+  // are always written: a direction with no name (missing from `names`, or an empty string, which
+  // means the same thing) gets the tag set to "" rather than deleted. West/North/East/South are
+  // mandatory tags, so this keeps an export-format game in proper form — and "" is what
+  // getPlayerNames reads back as "no name". (So setPlayerNames({}) on a bare game adds four empty tags.)
   setPlayerNames(names: PlayerNames): void {
     for (const direction of Direction.all) {
-      const tagName = Direction.name(direction)
-      const name = names[direction]
-      if (name === undefined) {
-        this.deleteSection(tagName)
-      } else {
-        this.setTag({ name: tagName, value: name })
-      }
+      this.setTag({ name: Direction.name(direction), value: names[direction] ?? '' })
     }
   }
 
