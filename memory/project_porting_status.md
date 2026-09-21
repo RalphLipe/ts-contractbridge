@@ -1635,3 +1635,17 @@ examples) explains why they exist, the usage pattern, and the lossy case.
   old behavior) does produce U+FFFD for those bytes. The viewer only reads; nothing there writes, so
   `encodePBNBytes` has no app caller yet. NOT redeployed to bigdealbridge.com.
 - Tests: `tests/pbn/pbnBytes.test.ts`, 21 new (563 total). Not committed.
+
+## Open items that came out of starting bridgit-ts (2026-09)
+The bidding engine `bridgit-ts` (its own repo, `~/Documents/GitHub/bridgit-ts`) depends on this library.
+Nothing here has been done; these are the library-side items it surfaced:
+- **Publish to npm** — `ts-contractbridge` is not published (the name was free when checked), and bridgit-ts
+  cannot be installed by its consumers until it is. Ralph decides when.
+- **Fix the package entry points first:** `packages/ts-contractbridge/package.json` has a `require` export
+  pointing at `dist/index.cjs`, which the tsc build never produces.
+- **Add a `LICENSE` file.** `package.json` says MIT but the repo has none.
+- **`decodePBNBytes` under JavaScriptCore:** `TextDecoder` does not exist there, so its `try/catch` swallows
+  the ReferenceError and silently decodes UTF-8 as Latin-1. Swift would decode bytes itself, but it should
+  fail loudly. (The rest of the library was verified to load and run under the `jsc` shell.)
+- **Maybe:** thin `PBNGame.getBidSystem(pair)` / `setBidSystem(pair, value)` string accessors for the PBN
+  `BidSystemNS` / `BidSystemEW` tags (spec 4.3.1). Not requested yet; bridgit-ts parses the value itself.
