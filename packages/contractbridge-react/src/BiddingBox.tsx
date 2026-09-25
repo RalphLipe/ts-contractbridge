@@ -46,14 +46,17 @@ const specialCalls: readonly BiddingBoxCall[] = ['XX', 'Pass', 'X']
 const identity = (x: string): string => x
 
 // Traditional bidding-box coloring: clubs green, diamonds gold, hearts red, spades blue, NT plain.
+const bidColors: Partial<Record<Strain, string>> = {
+  C: 'var(--cb-bidbox-clubs)',
+  D: 'var(--cb-bidbox-diamonds)',
+  H: 'var(--cb-bidbox-hearts)',
+  S: 'var(--cb-bidbox-spades)',
+}
+
+const bidColor = (bid: Bid): string | undefined => bidColors[Bid.strain(bid)]
+
 const bidStyle = (bid: Bid): CSSProperties => {
-  const colors: Partial<Record<Strain, string>> = {
-    C: 'var(--cb-bidbox-clubs)',
-    D: 'var(--cb-bidbox-diamonds)',
-    H: 'var(--cb-bidbox-hearts)',
-    S: 'var(--cb-bidbox-spades)',
-  }
-  const color = colors[Bid.strain(bid)]
+  const color = bidColor(bid)
   return color === undefined ? {} : { color }
 }
 
@@ -87,12 +90,15 @@ export function BiddingBox({ state, onChange, passText = 'Pass' }: BiddingBoxPro
         itemKey={identity}
         onSelect={selectBid}
         itemStyle={bidStyle}
-        renderItem={bid => (
-          <>
-            {Bid.level(bid)}
-            <StrainSymbol strain={Bid.strain(bid)} />
-          </>
-        )}
+        renderItem={bid => {
+          const color = bidColor(bid)
+          return (
+            <>
+              {Bid.level(bid)}
+              <StrainSymbol strain={Bid.strain(bid)} {...(color !== undefined && { color })} />
+            </>
+          )
+        }}
       />
       <PickerGrid
         items={specialCalls}
