@@ -4,11 +4,34 @@
 :root {
   --cb-suit-black: #1a1a1a;
   --cb-suit-red: #c62828;
+
+  /* Traditional bidding-box coloring (BiddingBox/ContractPicker) — independent of the suit
+     red/black tokens above, even though the default values happen to reuse green/red/blue for
+     clubs/hearts/spades and for pass/double/redouble, same as the Swift reference. */
+  --cb-bidbox-clubs: #2e7d32;
+  --cb-bidbox-diamonds: #ef6c00;
+  --cb-bidbox-hearts: #c62828;
+  --cb-bidbox-spades: #1565c0;
+  --cb-bidbox-pass: #2e7d32;
+  --cb-bidbox-double: #c62828;
+  --cb-bidbox-redouble: #1565c0;
+  --cb-bidbox-border: #999999;
+  --cb-bidbox-selected-bg: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --cb-suit-black: #e8e8e8;
     --cb-suit-red: #ef5350;
+
+    --cb-bidbox-clubs: #66bb6a;
+    --cb-bidbox-diamonds: #ffa726;
+    --cb-bidbox-hearts: #ef5350;
+    --cb-bidbox-spades: #42a5f5;
+    --cb-bidbox-pass: #66bb6a;
+    --cb-bidbox-double: #ef5350;
+    --cb-bidbox-redouble: #42a5f5;
+    --cb-bidbox-border: #666666;
+    --cb-bidbox-selected-bg: #4a4a4a;
   }
 }

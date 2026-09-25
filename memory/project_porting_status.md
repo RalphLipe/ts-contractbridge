@@ -1636,16 +1636,70 @@ examples) explains why they exist, the usage pattern, and the lossy case.
   `encodePBNBytes` has no app caller yet. NOT redeployed to bigdealbridge.com.
 - Tests: `tests/pbn/pbnBytes.test.ts`, 21 new (563 total). Not committed.
 
-## Open items that came out of starting bridgit-ts (2026-09)
-The bidding engine `bridgit-ts` (its own repo, `~/Documents/GitHub/bridgit-ts`) depends on this library.
-Nothing here has been done; these are the library-side items it surfaced:
-- **Publish to npm** — `ts-contractbridge` is not published (the name was free when checked), and bridgit-ts
-  cannot be installed by its consumers until it is. Ralph decides when.
-- **Fix the package entry points first:** `packages/ts-contractbridge/package.json` has a `require` export
-  pointing at `dist/index.cjs`, which the tsc build never produces.
-- **Add a `LICENSE` file.** `package.json` says MIT but the repo has none.
-- **`decodePBNBytes` under JavaScriptCore:** `TextDecoder` does not exist there, so its `try/catch` swallows
-  the ReferenceError and silently decodes UTF-8 as Latin-1. Swift would decode bytes itself, but it should
-  fail loudly. (The rest of the library was verified to load and run under the `jsc` shell.)
-- **Maybe:** thin `PBNGame.getBidSystem(pair)` / `setBidSystem(pair, value)` string accessors for the PBN
-  `BidSystemNS` / `BidSystemEW` tags (spec 4.3.1). Not requested yet; bridgit-ts parses the value itself.
+## Publishing to npm: prepared, NOT published (2026-09)
+`packages/ts-contractbridge` is ready to publish; nothing has been published, and Ralph does the publish
+himself (it needs his npm login and two-factor code). Done, all in `packages/ts-contractbridge/`:
+- **ESM-only.** The `require` export and the `main` that pointed at a non-existent `dist/index.cjs` are gone.
+  `exports` is now `types` / `import` / `default` → `dist/index.js` (`default` is what lets `require()` load
+  it on recent Node, tested on Node 25). `module` removed.
+- **`LICENSE`** (MIT, 2026, Ralph Lipe) and **`README.md`** (accurate; every example was run against an installed
+  tarball) added inside the package. The package README deliberately does not link the Swift repo, which is
+  private.
+- **Metadata:** `author`, `homepage`, `repository` (with `directory`), `bugs`, more keywords, a better description.
+- **`files`: `["dist", "src"]`** so the source maps resolve; the tarball is 162 files, ~93 kB, and contains no
+  tests or test data.
+- **`prepublishOnly`:** `npm run clean && npm run build && npm test`.
+- **Verified from a packed tarball installed in an empty project:** ESM import, `require()`, TypeScript
+  resolution under `node16` and `bundler`, and loading in the `jsc` (JavaScriptCore) shell. I did NOT run
+  `npm publish` or `npm publish --dry-run`, on purpose.
+- **To publish:** `npm login`, then `npm publish --workspace=packages/ts-contractbridge` (the name
+  `ts-contractbridge` was free on 2026-09-21). A version can never be republished, so bump it deliberately.
+  Then tag `v0.1.0` and switch bridgit-ts's `file:` link to `^0.1.0`.
+
+**Still open:** the ROOT `README.md` is stale (it describes a `bridge.ts` with only cards and a deck) and is what
+GitHub shows; `decodePBNBytes` under JavaScriptCore silently decodes UTF-8 as Latin-1 (`TextDecoder` does not
+exist there) and should fail loudly; optional `PBNGame.getBidSystem` / `setBidSystem` accessors for the PBN
+`BidSystemNS` / `BidSystemEW` tags (spec 4.3.1) have not been requested.
+
+## BiddingBox and ContractPicker components (2026-09)
+Ported from the Swift reference's `ContractBridgeUI/BiddingBox.swift` and `ContractPicker.swift` into
+`contractbridge-react`, as `BiddingBox.tsx`, `ContractPicker.tsx`, and an internal (not exported)
+`PickerGrid.tsx` generic selection-grid helper — the reference's own `PickerGrid` is package-internal
+too. Selection is NOT animated (the reference animates it; Ralph called that a nice-to-have, not a
+requirement).
+
+- **State shape.** Both `BiddingBoxState` and `ContractPickerState` use required fields typed
+  `X | undefined` (`declarer: Direction | undefined`, not `declarer?: Direction`) rather than optional
+  properties — deliberately different from most of this codebase's `exactOptionalPropertyTypes` idiom,
+  because these fields are conceptually always-present-but-possibly-empty (like a SwiftUI `@State`
+  property), so a handler can freely spread-and-override `{ ...state, declarer: undefined }` without
+  hitting the "optional properties can't be explicitly assigned undefined" restriction.
+- **`BiddingBoxState`** = `{ bid: Bid | undefined; call: 'Pass' | 'X' | 'XX' | undefined }` — kept as two
+  independent fields (not one `Call`) because the box's two grids (35 bids; Redouble/Pass/Double) have
+  independent selection state that only partly interacts: picking Pass clears `bid`; picking a bid clears
+  `call` only if `call` was `'Pass'` (a selected X/XX carries over to the new bid — this is how
+  `ContractPicker` reuses X/XX as "this bid is doubled/redoubled" rather than as an opponent's call).
+  `BiddingBoxState.toCall()` combines them into a plain `Call`.
+- **Bidding-box coloring** (clubs green, diamonds gold, hearts red, spades blue, NT plain; Pass green,
+  Double red, Redouble blue) is new CSS custom properties in `theme.css` (`--cb-bidbox-*`), independent
+  of the existing `--cb-suit-*` red/black tokens even though the defaults happen to reuse the same
+  green/red/blue as the Swift reference's `Color.green`/`.red`/`.blue`.
+  `passText` (a `BiddingBox` prop, default `"Pass"`) is one place this port improves on the reference:
+  the Swift version declares the same parameter but never applies it to the Pass cell's text; here it
+  does.
+- **`ContractPickerState`** wraps a `BiddingBoxState` plus `declarer`, `passConfirmed`, and
+  `showingPassConfirmation` — ported field-for-field from the reference's struct, including the
+  pass-out confirmation flow (picking Pass shows a "Pass out hand?" Yes/No prompt unless already
+  confirmed; Yes sets `passConfirmed`; No clears the Pass; picking a new bid or a declarer while the
+  prompt is showing cancels it). `ContractPickerState.isValid()` mirrors the reference exactly: passed
+  out and not still confirming, or a contract and a declarer.
+- Declarer order is `['W', 'N', 'S', 'E']` (not clockwise) — the reference's own exact order, kept
+  as-is rather than "corrected" to match `AuctionTable`'s different `['W','N','E','S']` convention.
+- Verified in the browser (temporary demo swapped into `apps/pbn-viewer/src/App.tsx`, then reverted —
+  not committed): bid + declarer selection, X/XX carrying over across bid changes, and the full
+  pass-confirmation flow (Pass → prompt appears, Valid: false → Yes → `passConfirmed: true`,
+  prompt gone, Valid: true). `npx tsc --noEmit` clean on `contractbridge-react`; all 563 core-library
+  tests still pass (no core library code was touched).
+- **Not done yet, on purpose:** no wiring into `pbn-viewer` (these are still just components; the
+  reference's own note that "ContractPicker is really just a BiddingBox with declarer buttons" is
+  reflected in `ContractPicker` composing `BiddingBox`, not duplicating it).
