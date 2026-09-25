@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
 import { Contract, Direction, PBNDocument, Vulnerable, decodePBNBytes } from 'ts-contractbridge'
 import type { PBNGame } from 'ts-contractbridge'
-import { AuctionTable, DealDiagram, DealResultView, DeclaredContractView, DoubleDummyTricksView, OpeningLeadView } from 'contractbridge-react'
+import { DealDiagram, DealResultView, DeclaredContractView, DoubleDummyTricksView, OpeningLeadView } from 'contractbridge-react'
+import { ContractEditor } from './ContractEditor.js'
 
 // Spreadsheet-column-style letters (A, B, ... Z, AA, AB, ...) for a game with no real Board tag —
 // deliberately NOT a number, so it can never be mistaken for an actual board number.
@@ -40,6 +41,12 @@ export function App(): JSX.Element {
   const [doc, setDoc] = useState<PBNDocument | undefined>(undefined)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
+  // Bumped by ContractEditor after it mutates the selected game in place, so this component
+  // re-renders and re-reads the parts of its own display (Result, opening lead, ...) that read
+  // straight off that PBNGame. Bumped on every new file too, so ContractEditor's `key` below
+  // (which pairs this with selectedIndex) always changes for a genuinely different game, even one
+  // that happens to land back on index 0.
+  const [docVersion, setDocVersion] = useState(0)
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = e.target.files?.[0]
@@ -51,6 +58,7 @@ export function App(): JSX.Element {
       const parsed = PBNDocument.fromPBN(decodePBNBytes(new Uint8Array(await file.arrayBuffer())))
       setDoc(parsed)
       setSelectedIndex(0)
+      setDocVersion(v => v + 1)
       setError(parsed.games.length === 0 ? 'No games found in this file.' : undefined)
     } catch (err) {
       setDoc(undefined)
@@ -61,7 +69,6 @@ export function App(): JSX.Element {
   const labels = doc !== undefined ? gameLabels(doc.games) : []
   const selectedGame = doc?.games[selectedIndex]
   const selectedDeal = selectedGame?.getDeal()
-  const selectedAuction = selectedGame?.getAuction()
   const selectedDoubleDummyTricks = selectedGame?.getDoubleDummyTricks()
   const selectedPlayerNames = selectedGame?.getPlayerNames()
   const openingLead = selectedGame?.getOpeningLead()
@@ -125,9 +132,16 @@ export function App(): JSX.Element {
           {selectedDoubleDummyTricks !== undefined &&
             <DoubleDummyTricksView tricks={selectedDoubleDummyTricks} />}
 
-          {selectedAuction !== undefined && <AuctionTable auction={selectedAuction} />}
-
           {declaredContract !== undefined && <DeclaredContractView declaredContract={declaredContract} />}
+
+          {selectedGame !== undefined && (
+            <ContractEditor
+              key={`${docVersion}-${selectedIndex}`}
+              game={selectedGame}
+              onChange={() => setDocVersion(v => v + 1)}
+              {...(selectedPlayerNames !== undefined && { names: selectedPlayerNames })}
+            />
+          )}
 
           {openingLead !== undefined && <OpeningLeadView {...openingLead} />}
 

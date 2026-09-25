@@ -1703,3 +1703,39 @@ requirement).
 - **Not done yet, on purpose:** no wiring into `pbn-viewer` (these are still just components; the
   reference's own note that "ContractPicker is really just a BiddingBox with declarer buttons" is
   reflected in `ContractPicker` composing `BiddingBox`, not duplicating it).
+
+## ContractEditor: wiring BiddingBox/ContractPicker into pbn-viewer (2026-09)
+New `apps/pbn-viewer/src/ContractEditor.tsx` (app-only glue, not in `contractbridge-react` — it
+mutates a `PBNGame` directly, and the library's own boundary is "presentational, no document
+state"). Wired into `App.tsx` in place of the old read-only `AuctionTable`/`DeclaredContractView`
+pair (the summary `DeclaredContractView` line is kept alongside it).
+
+- **Three mutually exclusive modes**, a radio group: *No contract* (clears Contract/Declarer to
+  `""` and deletes the Auction section — same "empty a mandatory tag rather than delete it"
+  discipline as the rest of this library), *Contract* (deletes any Auction section, then a
+  `ContractPicker` seeded from the game's current declared contract or passed-out state, applying
+  live via `setDeclaredContract`/`setDealOutcome(DealOutcome.passedOut)` as soon as it's valid), and
+  *Auction* (builds a `PBNAuction` call by call via `PBNAuction.makingCall`, which derives
+  Contract/Declarer itself through the existing `PBNGame.setAuction` side effect). Switching modes
+  commits immediately — there's no separate save step, and no undo beyond picking a different mode.
+- **Auction entry:** a `BiddingBox` for the next call plus an optional note text field; "Add call"
+  calls `PBNAuction.makingCall`, catching `PBNAuctionError` (insufficient bid, illegal double/
+  redouble) into an inline message rather than letting it throw; "Undo last call"
+  (`PBNAuction.undoingLast`) is always available, even once the auction is complete, to correct a
+  premature pass. If the game has no Dealer yet, a small W/N/E/S prompt asks for one before the
+  auction (and the Dealer tag) can be created.
+- **Remounting on game change:** `ContractEditor` derives its initial mode/state from `game` via lazy
+  `useState` initializers only — it does not resync if `game` changes under it. `App.tsx` gives it
+  `key={`${docVersion}-${selectedIndex}`}` (a `docVersion` counter bumped on every file load) so it
+  fully remounts on a different board *or* a newly loaded file, even one that happens to land back
+  on the same `selectedIndex`.
+- **Why mutation needs a bump:** `PBNGame` is a mutable class; mutating the selected game in place
+  doesn't itself change any React state, so `App.tsx`'s own derived reads (`getDealOutcome()`,
+  `getOpeningLead()`, etc.) would go stale. `ContractEditor`'s `onChange` prop is exactly the
+  `docVersion` bump — called after every mutation, so `App` re-renders and re-reads them fresh.
+- Verified in the browser against hand-typed PBN text (not through the file-upload input, which
+  can't be automated): added a call with a note (renders as a footnote + `[Note]` line, correct PBN
+  output), completed an auction (Contract/Declarer derived correctly), undid a call, switched
+  Contract → Auction → No contract (each mutated the sections exactly as designed), and exercised
+  the no-Dealer prompt and an illegal-double error message. `npx tsc --noEmit` clean on both
+  `contractbridge-react` and `apps/pbn-viewer`; all 563 core-library tests unaffected.
